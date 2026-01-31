@@ -1,3 +1,5 @@
+"use client";
+
 import * as anchor from "@coral-xyz/anchor";
 
 type LoadMarketplaceParams = {

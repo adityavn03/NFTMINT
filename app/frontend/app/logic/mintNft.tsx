@@ -1,3 +1,5 @@
+"use client";
+
 import { clusterApiUrl } from "@solana/web3.js";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import { createNft, mplTokenMetadata } from "@metaplex-foundation/mpl-token-metadata";

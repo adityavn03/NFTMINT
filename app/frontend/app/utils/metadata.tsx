@@ -1,6 +1,8 @@
 /* ================================
    IPFS NORMALIZER
 ================================ */
+"use client";
+
 
 export const normalizeIpfsUrl = (uri: string) => {
   if (!uri) return null;

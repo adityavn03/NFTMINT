@@ -1,3 +1,5 @@
+"use client";
+
 import { PublicKey } from "@solana/web3.js";
 import * as anchor from "@coral-xyz/anchor";
 import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from "@solana/spl-token";
