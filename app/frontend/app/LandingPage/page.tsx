@@ -1,222 +1,254 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import {
+  ArrowLeft,
+  ArrowRight,
+  BadgeCheck,
+  Coins,
+  GalleryVerticalEnd,
+  LayoutDashboard,
+  LockKeyhole,
+  Palette,
+  ShieldCheck,
+  Sparkles,
+  Wallet,
+} from "lucide-react";
 import Customlogic from "../TokenSwap/page";
 import NFTMarketplace from "../nft_logic/page";
 
-export default function Main() {
-  const wallet = useWallet();
-  const [activeView, setActiveView] = useState<'dashboard' | 'swap' | 'nft'>('dashboard');
+type ActiveView = "dashboard" | "swap" | "nft";
 
-  // ── Token Swap View ────────────────────────────────────────
-  if (activeView === 'swap') {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <nav className="border-b bg-white sticky top-0 z-50 shadow-sm">
-          <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-            <button
-              onClick={() => setActiveView('dashboard')}
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 font-medium transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Back to Dashboard
-            </button>
-            <WalletMultiButton className="!bg-indigo-600 hover:!bg-indigo-700 !text-white !rounded-xl !px-5 !py-2.5 !font-medium transition" />
-          </div>
-        </nav>
+const featureCards = [
+  {
+    id: "swap" as const,
+    title: "Token Swap",
+    eyebrow: "Escrow swaps",
+    description:
+      "Create peer-to-peer SPL token swaps with predictable settlement on Solana devnet.",
+    icon: Coins,
+    statOne: "Escrow",
+    statTwo: "SPL ready",
+  },
+  {
+    id: "nft" as const,
+    title: "NFT Studio",
+    eyebrow: "Mint and trade",
+    description:
+      "Mint metadata-backed NFTs, list them for sale, and manage your wallet collection.",
+    icon: Palette,
+    statOne: "IPFS",
+    statTwo: "Marketplace",
+  },
+];
 
-        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-10">
-          <Customlogic />
-        </div>
-      </div>
-    );
-  }
-
-  // ── NFT Marketplace View ───────────────────────────────────
-  if (activeView === 'nft') {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <nav className="border-b bg-white sticky top-0 z-50 shadow-sm">
-          <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-            <button
-              onClick={() => setActiveView('dashboard')}
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 font-medium transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Back to Dashboard
-            </button>
-            <WalletMultiButton className="!bg-indigo-600 hover:!bg-indigo-700 !text-white !rounded-xl !px-5 !py-2.5 !font-medium transition" />
-          </div>
-        </nav>
-
-        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-10">
-          <NFTMarketplace />
-        </div>
-      </div>
-    );
-  }
-
-  // ── Main Dashboard ─────────────────────────────────────────
+function WalletButton() {
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Navigation */}
-      <nav className="bg-white border-b sticky top-0 z-50 shadow-sm">
-        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center font-bold text-white text-lg shadow-md">
-              SD
+    <WalletMultiButton className="!h-11 !rounded-lg !bg-slate-950 !px-4 !text-sm !font-semibold !text-white !shadow-none transition hover:!bg-slate-800" />
+  );
+}
+
+function ShellHeader({
+  activeView,
+  onBack,
+}: {
+  activeView: ActiveView;
+  onBack?: () => void;
+}) {
+  return (
+    <nav className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+        <div className="flex items-center gap-3">
+          {activeView === "dashboard" ? (
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-950 text-white">
+              <GalleryVerticalEnd className="h-5 w-5" />
             </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-              Solana DApp
+          ) : (
+            <button
+              onClick={onBack}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Dashboard
+            </button>
+          )}
+
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+              NFTMINT
+            </p>
+            <h1 className="text-lg font-bold text-slate-950">
+              Solana Creator Console
             </h1>
           </div>
-
-          <WalletMultiButton className="!bg-indigo-600 hover:!bg-indigo-700 !text-white !rounded-xl !px-5 !py-2.5 !font-medium transition" />
         </div>
-      </nav>
 
-      <main className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-12 lg:py-16">
-        {!wallet.publicKey ? (
-          // Not connected ── Hero
-          <div className="text-center py-20 lg:py-32">
-            <div className="max-w-4xl mx-auto">
-              <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold text-gray-900 tracking-tight">
-                Backing the Builders
-              </h1>
-              <h2 className="mt-4 text-4xl sm:text-5xl lg:text-6xl font-extrabold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
-                of the New Open Internet
-              </h2>
+        <WalletButton />
+      </div>
+    </nav>
+  );
+}
 
-              <p className="mt-8 text-xl text-gray-600 max-w-3xl mx-auto">
-                Empowering decentralized trading with fast token swaps and a smooth NFT marketplace — built for creators and traders.
-              </p>
+export default function Main() {
+  const wallet = useWallet();
+  const [activeView, setActiveView] = useState<ActiveView>("dashboard");
 
-              <div className="mt-12 grid sm:grid-cols-2 gap-6 max-w-3xl mx-auto">
-                <div className="bg-white rounded-2xl p-8 shadow-md border border-gray-100 hover:shadow-xl hover:border-indigo-200 transition-all">
-                  <div className="text-6xl mb-4">🔄</div>
-                  <h3 className="text-2xl font-bold text-gray-900">Token Swap</h3>
-                  <p className="mt-3 text-gray-600">Secure, escrow-based peer-to-peer SPL token swaps</p>
-                </div>
+  if (activeView === "swap") {
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-950">
+        <ShellHeader activeView={activeView} onBack={() => setActiveView("dashboard")} />
+        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+          <Customlogic />
+        </main>
+      </div>
+    );
+  }
 
-                <div className="bg-white rounded-2xl p-8 shadow-md border border-gray-100 hover:shadow-xl hover:border-purple-200 transition-all">
-                  <div className="text-6xl mb-4">🎨</div>
-                  <h3 className="text-2xl font-bold text-gray-900">NFT Market</h3>
-                  <p className="mt-3 text-gray-600">Mint, buy & trade digital collectibles instantly</p>
-                </div>
-              </div>
+  if (activeView === "nft") {
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-950">
+        <ShellHeader activeView={activeView} onBack={() => setActiveView("dashboard")} />
+        <NFTMarketplace />
+      </div>
+    );
+  }
 
-              <div className="mt-10 flex flex-wrap justify-center gap-6 text-sm text-gray-500">
-                <span className="flex items-center gap-1.5"><span className="text-indigo-500">⚡</span> Lightning Fast</span>
-                <span>•</span>
-                <span className="flex items-center gap-1.5"><span className="text-green-500">💸</span> Very Low Fees</span>
-                <span>•</span>
-                <span className="flex items-center gap-1.5"><span className="text-purple-500">🔒</span> Secure by Design</span>
-              </div>
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-950">
+      <ShellHeader activeView={activeView} />
+
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+        <section className="grid gap-6 lg:grid-cols-[1.08fr_0.92fr]">
+          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm sm:p-8 lg:p-10">
+            <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              Devnet connected
+            </div>
+
+            <h2 className="max-w-3xl text-4xl font-black tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
+              Mint, list, and trade NFTs from one focused workspace.
+            </h2>
+
+            <p className="mt-5 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">
+              NFTMINT brings creator tooling and marketplace actions together:
+              upload metadata, mint on Solana, list for SOL, and manage the NFTs in
+              your wallet.
+            </p>
+
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <button
+                onClick={() => setActiveView("nft")}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+              >
+                Open NFT Studio
+                <ArrowRight className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setActiveView("swap")}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                Launch Token Swap
+              </button>
             </div>
           </div>
-        ) : (
-          // Connected ── Dashboard
-          <>
-            <div className="text-center mb-16">
-              <h2 className="text-5xl sm:text-6xl font-extrabold text-gray-900">
-                Welcome back! 👋
-              </h2>
-              <p className="mt-4 text-xl text-gray-600">
-                Choose what you'd like to do today
+
+          <aside className="rounded-lg border border-slate-200 bg-slate-950 p-6 text-white shadow-sm sm:p-8">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Wallet status
+                </p>
+                <h3 className="mt-2 text-2xl font-bold">
+                  {wallet.publicKey ? "Ready to transact" : "Connect to begin"}
+                </h3>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-white/10">
+                {wallet.publicKey ? (
+                  <BadgeCheck className="h-6 w-6 text-emerald-300" />
+                ) : (
+                  <Wallet className="h-6 w-6 text-slate-300" />
+                )}
+              </div>
+            </div>
+
+            <div className="mt-8 rounded-lg border border-white/10 bg-white/5 p-4">
+              <p className="text-sm text-slate-300">Active wallet</p>
+              <p className="mt-2 break-all font-mono text-sm text-white">
+                {wallet.publicKey
+                  ? wallet.publicKey.toString()
+                  : "No wallet connected yet"}
               </p>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-8 lg:gap-10">
-              {/* Token Swap Card */}
-              <div
-                onClick={() => setActiveView('swap')}
-                className="group bg-white rounded-3xl p-8 lg:p-10 shadow-lg border border-gray-100 hover:shadow-2xl hover:border-indigo-300 hover:-translate-y-1 transition-all duration-300 cursor-pointer"
-              >
-                <div className="text-8xl mb-6 transform group-hover:scale-110 transition-transform">🔄</div>
-
-                <h3 className="text-4xl font-extrabold text-gray-900 mb-4">Token Swap</h3>
-                <p className="text-lg text-gray-600 mb-8">
-                  Swap any SPL tokens securely with escrow smart contracts — fast and trustless.
-                </p>
-
-                <div className="grid grid-cols-2 gap-5 mb-8">
-                  <div className="bg-gray-50 rounded-2xl p-5 text-center">
-                    <div className="text-xs text-gray-500 mb-1">Total Swaps</div>
-                    <div className="text-2xl font-bold text-gray-800">1,234</div>
-                  </div>
-                  <div className="bg-gray-50 rounded-2xl p-5 text-center">
-                    <div className="text-xs text-gray-500 mb-1">Volume</div>
-                    <div className="text-2xl font-bold text-gray-800">2.5M SOL</div>
-                  </div>
-                </div>
-
-                <button className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white py-4 rounded-2xl font-bold text-lg shadow-md hover:shadow-lg hover:brightness-105 transition-all flex items-center justify-center gap-2 group">
-                  Launch Swap
-                  <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                  </svg>
-                </button>
+            <div className="mt-6 grid gap-3">
+              <div className="flex items-center gap-3 rounded-lg bg-white/5 p-4">
+                <ShieldCheck className="h-5 w-5 text-emerald-300" />
+                <span className="text-sm text-slate-200">Escrow-backed marketplace actions</span>
               </div>
-
-              {/* NFT Card */}
-              <div
-                onClick={() => setActiveView('nft')}
-                className="group bg-white rounded-3xl p-8 lg:p-10 shadow-lg border border-gray-100 hover:shadow-2xl hover:border-purple-300 hover:-translate-y-1 transition-all duration-300 cursor-pointer"
-              >
-                <div className="text-8xl mb-6 transform group-hover:scale-110 transition-transform">🎨</div>
-
-                <h3 className="text-4xl font-extrabold text-gray-900 mb-4">NFT Marketplace</h3>
-                <p className="text-lg text-gray-600 mb-8">
-                  Discover, mint, buy & sell NFTs with instant finality — creator-first experience.
-                </p>
-
-                <div className="grid grid-cols-2 gap-5 mb-8">
-                  <div className="bg-gray-50 rounded-2xl p-5 text-center">
-                    <div className="text-xs text-gray-500 mb-1">Active Listings</div>
-                    <div className="text-2xl font-bold text-gray-800">456</div>
-                  </div>
-                  <div className="bg-gray-50 rounded-2xl p-5 text-center">
-                    <div className="text-xs text-gray-500 mb-1">Floor Price</div>
-                    <div className="text-2xl font-bold text-gray-800">0.5 SOL</div>
-                  </div>
-                </div>
-
-                <button className="w-full bg-gradient-to-r from-purple-500 to-pink-600 text-white py-4 rounded-2xl font-bold text-lg shadow-md hover:shadow-lg hover:brightness-105 transition-all flex items-center justify-center gap-2 group">
-                  Launch Marketplace
-                  <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                  </svg>
-                </button>
+              <div className="flex items-center gap-3 rounded-lg bg-white/5 p-4">
+                <LockKeyhole className="h-5 w-5 text-sky-300" />
+                <span className="text-sm text-slate-200">Wallet-gated collection management</span>
+              </div>
+              <div className="flex items-center gap-3 rounded-lg bg-white/5 p-4">
+                <Sparkles className="h-5 w-5 text-violet-300" />
+                <span className="text-sm text-slate-200">Metadata upload and mint flow</span>
               </div>
             </div>
+          </aside>
+        </section>
 
-            {/* Quick Guide */}
-            <div className="mt-16 bg-white rounded-2xl p-8 lg:p-10 shadow-md border border-gray-100 max-w-5xl mx-auto">
-              <h3 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-3">
-                <span>📚</span> Quick Start Guide
-              </h3>
-              <div className="grid md:grid-cols-3 gap-6 text-gray-600">
-                <div className="flex items-start gap-4">
-                  <span className="text-2xl text-indigo-500">→</span>
-                  <p>Click any card to open that feature</p>
+        <section className="mt-6 grid gap-5 md:grid-cols-2">
+          {featureCards.map((feature) => {
+            const Icon = feature.icon;
+
+            return (
+              <button
+                key={feature.id}
+                onClick={() => setActiveView(feature.id)}
+                className="group rounded-lg border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 text-slate-950">
+                    <Icon className="h-6 w-6" />
+                  </div>
+                  <ArrowRight className="h-5 w-5 text-slate-400 transition group-hover:translate-x-1 group-hover:text-slate-950" />
                 </div>
-                <div className="flex items-start gap-4">
-                  <span className="text-2xl text-purple-500">→</span>
-                  <p>Use the back button to return here anytime</p>
+
+                <p className="mt-6 text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  {feature.eyebrow}
+                </p>
+                <h3 className="mt-2 text-2xl font-bold text-slate-950">{feature.title}</h3>
+                <p className="mt-3 text-sm leading-6 text-slate-600">{feature.description}</p>
+
+                <div className="mt-6 grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-bold text-slate-950">{feature.statOne}</p>
+                    <p className="text-xs text-slate-500">Primary flow</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-bold text-slate-950">{feature.statTwo}</p>
+                    <p className="text-xs text-slate-500">Supported</p>
+                  </div>
                 </div>
-                <div className="flex items-start gap-4">
-                  <span className="text-2xl text-pink-500">→</span>
-                  <p>Your wallet is ready — start transacting</p>
-                </div>
+              </button>
+            );
+          })}
+        </section>
+
+        {!wallet.publicKey && (
+          <section className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-5 text-amber-900">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <LayoutDashboard className="h-5 w-5" />
+                <p className="text-sm font-semibold">
+                  Connect Phantom or another Solana wallet to unlock minting, listing, and buying.
+                </p>
               </div>
+              <WalletButton />
             </div>
-          </>
+          </section>
         )}
       </main>
     </div>

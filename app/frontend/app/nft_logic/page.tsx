@@ -12,6 +12,12 @@ import { walletAdapterIdentity } from "@metaplex-foundation/umi-signer-wallet-ad
 import { percentAmount } from "@metaplex-foundation/umi";
 import { generateSigner } from "@metaplex-foundation/umi";
 
+//design and component proping
+import MarketplaceTab from "@/NFTLOGIC_SUBMODULE/MarketplaceTab/page";
+import CollectionTab from "@/NFTLOGIC_SUBMODULE/CollectionTab/page";
+import MintTab from "@/NFTLOGIC_SUBMODULE/MintTab/page";
+import Header from "@/NFTLOGIC_SUBMODULE/Layout/page";
+
 import {
   getAssociatedTokenAddress,
   TOKEN_PROGRAM_ID,
@@ -214,7 +220,7 @@ export default function NFTMarketplace() {
     target.style.display = "none";
     if (target.parentElement) {
       target.parentElement.innerHTML =
-        '<div class="flex items-center justify-center h-full text-gray-400 text-4xl">🖼️</div>';
+        '<div class="flex h-full items-center justify-center text-sm font-semibold text-slate-400">Image unavailable</div>';
     }
   };
 
@@ -261,12 +267,12 @@ export default function NFTMarketplace() {
       throw new Error("Please enter an NFT name");
     }
 
-    setStatus("📤 Uploading image to IPFS...");
+    setStatus("Uploading image to IPFS...");
     const imageUri = await uploadFileToPinata(imageFile, PINATA_JWT);
 
     console.log("Image uploaded:", imageUri);
 
-    setStatus("📝 Uploading metadata to IPFS...");
+    setStatus("Uploading metadata to IPFS...");
     const metadata = {
       name,
       symbol: "NNFT",
@@ -279,7 +285,7 @@ export default function NFTMarketplace() {
 
     console.log("Metadata uploaded:", metadataUri);
 
-    setStatus("🎨 Creating NFT with Metaplex...");
+    setStatus("Creating NFT with Metaplex...");
     const umi = createUmi(clusterApiUrl("devnet"))
       .use(walletAdapterIdentity(wallet))
       .use(mplTokenMetadata());
@@ -314,7 +320,7 @@ export default function NFTMarketplace() {
   try {
     setLoading(true);
     setError(null);
-    setStatus("🚀 Minting NFT...");
+    setStatus("Minting NFT...");
 
     const mintResult = await mintNFT({
       wallet,
@@ -330,7 +336,7 @@ export default function NFTMarketplace() {
     }
     
 
-    setStatus("🏪 Listing NFT...");
+    setStatus("Listing NFT...");
 
     const listResult = await listNFT({
       program,
@@ -350,7 +356,7 @@ export default function NFTMarketplace() {
       escrow: listResult.escrow,
     });
 
-    setStatus("✅ NFT minted and listed successfully!");
+    setStatus("NFT minted and listed successfully.");
 
     loadMarketplace();
 
@@ -378,7 +384,7 @@ export default function NFTMarketplace() {
 
     setLoading(true);
     setError(null);
-    setStatus("💰 Processing NFT purchase...");
+    setStatus("Processing NFT purchase...");
 
     const result = await buyNFT({
       program,
@@ -392,7 +398,7 @@ export default function NFTMarketplace() {
 
     console.log("NFT Purchased TX:", result.tx);
 
-    setStatus("✅ NFT purchased successfully!");
+    setStatus("NFT purchased successfully.");
 
     // Refresh marketplace
     setTimeout(() => {
@@ -417,7 +423,7 @@ const handleListNFT = async (mintAddress: string, priceSOL: string) => {
 
     setLoading(true);
     setError(null);
-    setStatus("🏪 Listing NFT on marketplace...");
+    setStatus("Listing NFT on marketplace...");
 
     const result = await listNFT({
       program,
@@ -432,7 +438,7 @@ const handleListNFT = async (mintAddress: string, priceSOL: string) => {
 
     console.log("NFT Listed TX:", result.tx);
 
-    setStatus("✅ NFT listed successfully!");
+    setStatus("NFT listed successfully.");
     setListingNFT(null);
 
     // Refresh marketplace
@@ -458,7 +464,7 @@ const handleListNFT = async (mintAddress: string, priceSOL: string) => {
   try {
     setCancelingListing(listing.escrowAddress);
     setError(null);
-    setStatus("🔄 Canceling listing...");
+    setStatus("Canceling listing...");
 
     const result = await cancelListing({
       program,
@@ -471,7 +477,7 @@ const handleListNFT = async (mintAddress: string, priceSOL: string) => {
 
     console.log("Listing canceled TX:", result.tx);
 
-    setStatus("✅ Listing canceled! NFT returned to your wallet.");
+    setStatus("Listing canceled. NFT returned to your wallet.");
 
     // Refresh marketplace
     setTimeout(() => {
@@ -487,544 +493,75 @@ const handleListNFT = async (mintAddress: string, priceSOL: string) => {
   }
 };
 
-
-  /* =====================================================
-     GET NFT DATA
-  ===================================================== */
-{nfts.map((nft: any) => {
-
-  // Metadata fallback (IPFS JSON)
-  const fallbackMetadata = nftMetadata[nft.id];
-
-  // Final resolved values
-  const imageUrl = getNFTImage(nft, fallbackMetadata);
-  const nftName = getNFTName(nft, fallbackMetadata);
-
-  const isListing = listingNFT === nft.id;
-
-  return (
-    <div
-      key={nft.id}
-      className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden shadow-sm hover:shadow-xl hover:border-black transition-all duration-300 transform hover:-translate-y-1"
-    >
-
-      {/* NFT IMAGE */}
-      <div className="aspect-square bg-gray-100 relative">
-        {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt={nftName}
-            className="w-full h-full object-cover"
-            onError={handleImageError}
-          />
-        ) : (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <div className="w-8 h-8 border-4 border-gray-400 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-              <p className="text-xs text-gray-500">Loading...</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* NFT INFO */}
-      <div className="p-3">
-        <p className="font-semibold text-gray-900 truncate mb-1">
-          {nftName}
-        </p>
-
-        {nft.content?.metadata?.symbol && (
-          <p className="text-sm text-gray-500 truncate mb-2">
-            {nft.content.metadata.symbol}
-          </p>
-        )}
-
-        {/* LISTING UI */}
-        {isListing ? (
-          <div className="space-y-2 mt-2">
-
-            <input
-              type="number"
-              step="0.1"
-              value={listPrice}
-              onChange={(e) => setListPrice(e.target.value)}
-              placeholder="Price in SOL"
-              className="w-full border-2 border-black p-2 rounded text-sm"
-            />
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleListNFT(nft.id, listPrice)}
-                className="flex-1 bg-black text-white py-2 rounded text-sm"
-              >
-                Confirm
-              </button>
-
-              <button
-                onClick={() => setListingNFT(null)}
-                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded text-sm"
-              >
-                Cancel
-              </button>
-            </div>
-
-          </div>
-        ) : (
-          <button
-            onClick={() => {
-              setListingNFT(nft.id);
-              setListPrice("1.0");
-            }}
-            className="w-full bg-black text-white py-2 rounded text-sm mt-2"
-          >
-            List for Sale
-          </button>
-        )}
-
-      </div>
-    </div>
-  );
-})}
-
-
-
   /* =====================================================
      UI
   ===================================================== */
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-5xl font-bold text-black mb-2">
-            NFT Marketplace
-          </h1>
-          <p className="text-gray-600 text-lg">
-            Create, collect, and trade unique digital assets
-          </p>
-        </div>
+    <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
 
-        {/* Tab Navigation */}
-        <div className="flex justify-center mb-8">
-          <div className="bg-white rounded-lg p-1 shadow-md border-2 border-black">
-            <button
-              onClick={() => setActiveTab("mint")}
-              className={`px-6 py-3 rounded-md font-semibold transition-all ${
-                activeTab === "mint"
-                  ? "bg-black text-white"
-                  : "text-black hover:bg-gray-100"
-              }`}
-            >
-              Mint & List
-            </button>
-            <button
-              onClick={() => setActiveTab("marketplace")}
-              className={`px-6 py-3 rounded-md font-semibold transition-all ${
-                activeTab === "marketplace"
-                  ? "bg-black text-white"
-                  : "text-black hover:bg-gray-100"
-              }`}
-            >
-              Marketplace ({listedNFTs.length})
-            </button>
-            <button
-              onClick={() => setActiveTab("collection")}
-              className={`px-6 py-3 rounded-md font-semibold transition-all ${
-                activeTab === "collection"
-                  ? "bg-black text-white"
-                  : "text-black hover:bg-gray-100"
-              }`}
-            >
-              My Collection ({nfts.length})
-            </button>
-          </div>
-        </div>
+        <Header
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          listedNFTsCount={listedNFTs.length}
+          nftsCount={nfts.length}
+        />
 
         {/* Mint & List Tab */}
         {activeTab === "mint" && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Mint Form */}
-            <div className="border-2 border-black rounded-lg p-6 space-y-4 bg-white shadow-lg">
-              <h2 className="text-2xl font-bold text-black">Create NFT</h2>
-
-              <input
-                className="w-full border-2 border-black p-3 rounded focus:outline-none focus:ring-2 focus:ring-gray-400"
-                placeholder="NFT Name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-
-              <textarea
-                className="w-full border-2 border-black p-3 rounded h-24 focus:outline-none focus:ring-2 focus:ring-gray-400"
-                placeholder="Description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-
-              <div className="border-2 border-black rounded p-3">
-                <label className="text-sm font-semibold text-black mb-2 block">
-                  Upload Image
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                  className="w-full"
-                />
-              </div>
-
-              <input
-                type="number"
-                step="0.1"
-                className="w-full border-2 border-black p-3 rounded focus:outline-none focus:ring-2 focus:ring-gray-400"
-                placeholder="Price in SOL"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-              />
-
-              <div>
-                <h3 className="font-semibold mb-3 text-black">Attributes</h3>
-                {attributes.map((attr, i) => (
-                  <div key={i} className="flex gap-2 mb-2">
-                    <input
-                      className="border-2 border-black p-2 rounded w-1/2 focus:outline-none focus:ring-2 focus:ring-gray-400"
-                      placeholder="Trait Type"
-                      value={attr.trait_type}
-                      onChange={(e) =>
-                        updateAttribute(i, "trait_type", e.target.value)
-                      }
-                    />
-                    <input
-                      className="border-2 border-black p-2 rounded w-1/2 focus:outline-none focus:ring-2 focus:ring-gray-400"
-                      placeholder="Value"
-                      value={attr.value}
-                      onChange={(e) =>
-                        updateAttribute(i, "value", e.target.value)
-                      }
-                    />
-                  </div>
-                ))}
-                <button
-                  onClick={addAttribute}
-                  className="text-sm font-medium text-black underline hover:no-underline"
-                >
-                  + Add Attribute
-                </button>
-              </div>
-
-              <button
-                onClick={handleMintAndList}
-                disabled={loading || !wallet.connected}
-                className="w-full bg-black text-white p-3 rounded font-semibold hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {loading ? "Processing..." : "Mint & List NFT"}
-              </button>
-            </div>
-
-            {/* Status Column */}
-            <div className="space-y-4">
-              {(loading || status) && (
-                <div className="border-2 border-black rounded-lg p-6 bg-white shadow-lg">
-                  <h3 className="font-bold text-black mb-3">Status</h3>
-                  {loading && (
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-5 h-5 border-3 border-black border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-black font-medium">
-                        Processing...
-                      </span>
-                    </div>
-                  )}
-                  {status && <p className="text-gray-700 text-sm">{status}</p>}
-                </div>
-              )}
-
-              {error && (
-                <div className="border-2 border-red-500 bg-red-50 rounded-lg p-4">
-                  <p className="font-semibold text-red-700">Error:</p>
-                  <p className="text-sm text-red-600">{error}</p>
-                </div>
-              )}
-
-              {mintedNFT && (
-                <div className="border-2 border-black rounded-lg p-6 bg-white shadow-lg">
-                  <h3 className="font-bold text-black mb-3">NFT Details ✅</h3>
-                  <div className="space-y-3 text-sm">
-                    <div>
-                      <p className="font-semibold text-black">Mint Address:</p>
-                      <p className="text-gray-700 break-all font-mono text-xs">
-                        {mintedNFT.mintAddress}
-                      </p>
-                    </div>
-                    {mintedNFT.escrow && (
-                      <div>
-                        <p className="font-semibold text-black">
-                          Escrow Address:
-                        </p>
-                        <p className="text-gray-700 break-all font-mono text-xs">
-                          {mintedNFT.escrow}
-                        </p>
-                      </div>
-                    )}
-                    <div>
-                      <p className="font-semibold text-black">Price:</p>
-                      <p className="text-gray-700">{price} SOL</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <a
-                        href={mintedNFT.imageUri}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-black underline hover:no-underline text-xs"
-                      >
-                        View Image
-                      </a>
-                      <a
-                        href={mintedNFT.metadataUri}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-black underline hover:no-underline text-xs"
-                      >
-                        View Metadata
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {!wallet.connected && (
-                <div className="border-2 border-yellow-500 bg-yellow-50 rounded-lg p-4">
-                  <p className="text-yellow-800 text-sm font-medium">
-                    ⚠️ Please connect your wallet to continue
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+          <MintTab
+            name={name}
+            description={description}
+            price={price}
+            attributes={attributes}
+            loading={loading}
+            status={status}
+            error={error}
+            mintedNFT={mintedNFT}
+            walletConnected={wallet.connected}
+            setName={setName}
+            setDescription={setDescription}
+            setPrice={setPrice}
+            setImageFile={setImageFile}
+            updateAttribute={updateAttribute}
+            addAttribute={addAttribute}
+            handleMintAndList={handleMintAndList}
+          />
         )}
 
-        {/* Marketplace Tab */}
         {activeTab === "marketplace" && (
-          <div className="bg-white rounded-lg p-8 shadow-lg border-2 border-black">
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-white text-2xl">🏪</span>
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                NFT Marketplace
-              </h2>
-              <p className="text-gray-600 mb-4">
-                {loadingMarketplace
-                  ? "Loading listings..."
-                  : `${listedNFTs.length} NFT${listedNFTs.length !== 1 ? "s" : ""} listed`}
-              </p>
-              <button
-                onClick={loadMarketplace}
-                disabled={loadingMarketplace}
-                className="bg-black text-white px-6 py-2 rounded font-semibold hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                🔄 Refresh Marketplace
-              </button>
-            </div>
-
-            {loadingMarketplace ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin"></div>
-              </div>
-            ) : listedNFTs.length === 0 ? (
-              <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                <p className="text-gray-500 text-lg mb-2">
-                  No NFTs listed yet
-                </p>
-                <p className="text-gray-400 text-sm">
-                  Be the first to list an NFT!
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {listedNFTs.map((listing: any) => (
-                  <div
-                    key={listing.escrowAddress}
-                    className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden shadow-sm hover:shadow-xl hover:border-black transition-all duration-300 transform hover:-translate-y-1"
-                  >
-                    <div className="aspect-square bg-gray-100 relative">
-                      {listing.image ? (
-                        <img
-                          src={listing.image}
-                          alt={listing.name}
-                          className="w-full h-full object-cover"
-                          onError={handleImageError}
-                        />
-                      ) : (
-                        <div className="flex items-center justify-center h-full text-gray-400 text-4xl">
-                          🖼️
-                        </div>
-                      )}
-                      <div className="absolute top-2 right-2 bg-black text-white px-3 py-1 rounded-full text-sm font-bold">
-                        {listing.price} SOL
-                      </div>
-                    </div>
-                    <div className="p-3">
-                      <p className="font-semibold text-gray-900 truncate mb-1">
-                        {listing.name}
-                      </p>
-                      <p className="text-xs text-gray-500 truncate mb-2">
-                        Seller: {listing.seller.slice(0, 4)}...{listing.seller.slice(-4)}
-                      </p>
-                      {publicKey?.toString() !== listing.seller ? (
-                        <button
-                          onClick={() => handleBuyNFT(listing)}
-                          disabled={loading || !wallet.connected}
-                          className="w-full bg-black text-white py-2 rounded font-semibold hover:bg-gray-800 disabled:opacity-50 transition-colors text-sm"
-                        >
-                          Buy Now
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleCancelListing(listing)}
-                          disabled={cancelingListing === listing.escrowAddress || !wallet.connected}
-                          className="w-full bg-red-600 text-white py-2 rounded font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors text-sm"
-                        >
-                          {cancelingListing === listing.escrowAddress ? "Canceling..." : "Cancel Listing"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <MarketplaceTab
+            listedNFTs={listedNFTs}
+            loadingMarketplace={loadingMarketplace}
+            loadMarketplace={loadMarketplace}
+            handleBuyNFT={handleBuyNFT}
+            handleCancelListing={handleCancelListing}
+            publicKey={publicKey?.toString()}
+            walletConnected={wallet.connected}
+            loading={loading}
+            cancelingListing={cancelingListing}
+          />
         )}
 
-        {/* My Collection Tab */}
         {activeTab === "collection" && (
-          <div className="bg-white rounded-lg p-8 shadow-lg border-2 border-black">
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-gradient-to-br from-purple-400 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-white text-2xl">🖼️</span>
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                Your NFT Collection
-              </h2>
-              <p className="text-gray-600 mb-4">
-                {loadingNfts
-                  ? "Loading your NFTs..."
-                  : `${nfts.length} NFT${nfts.length !== 1 ? "s" : ""} found`}
-              </p>
-              <button
-                onClick={() => window.location.reload()}
-                disabled={loadingNfts}
-                className="bg-black text-white px-6 py-2 rounded font-semibold hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                🔄 Refresh Collection
-              </button>
-            </div>
-
-            {!publicKey ? (
-              <div className="text-center py-12 bg-red-50 rounded-lg border-2 border-red-200">
-                <p className="text-red-700 text-lg">
-                  ⚠️ Please connect your wallet to view NFTs
-                </p>
-              </div>
-            ) : loadingNfts ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
-              </div>
-            ) : nfts.length === 0 ? (
-              <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                <p className="text-gray-500 text-lg mb-2">
-                  No NFTs found in this wallet
-                </p>
-                <p className="text-gray-400 text-sm">
-                  Your NFTs in wallet will appear here (listed NFTs are in Marketplace)
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {nfts.map((nft: any) => {
-                  const imageUrl = getNFTImage(nft);
-                  const nftName = getNFTName(nft);
-                  const isListing = listingNFT === nft.id;
-                  
-                  return (
-                    <div
-                      key={nft.id}
-                      className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden shadow-sm hover:shadow-xl hover:border-black transition-all duration-300 transform hover:-translate-y-1"
-                    >
-                      <div className="aspect-square bg-gray-100 relative">
-                        {imageUrl ? (
-                          <img
-                            src={imageUrl}
-                            alt={nftName}
-                            className="w-full h-full object-cover"
-                            onError={handleImageError}
-                          />
-                        ) : (
-                          <div className="flex items-center justify-center h-full">
-                            <div className="text-center">
-                              <div className="w-8 h-8 border-4 border-gray-400 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                              <p className="text-xs text-gray-500">Loading...</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-3">
-                        <p className="font-semibold text-gray-900 truncate mb-1">
-                          {nftName}
-                        </p>
-                        {nft.content?.metadata?.symbol && (
-                          <p className="text-sm text-gray-500 truncate mb-2">
-                            {nft.content.metadata.symbol}
-                          </p>
-                        )}
-                        
-                        {isListing ? (
-                          <div className="space-y-2 mt-2">
-                            <input
-                              type="number"
-                              step="0.1"
-                              value={listPrice}
-                              onChange={(e) => setListPrice(e.target.value)}
-                              placeholder="Price in SOL"
-                              className="w-full border-2 border-black p-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
-                            />
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => handleListNFT(nft.id, listPrice)}
-                                disabled={loading || !listPrice}
-                                className="flex-1 bg-black text-white py-2 rounded font-semibold hover:bg-gray-800 disabled:opacity-50 transition-colors text-sm"
-                              >
-                                Confirm
-                              </button>
-                              <button
-                                onClick={() => setListingNFT(null)}
-                                disabled={loading}
-                                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded font-semibold hover:bg-gray-300 transition-colors text-sm"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => {
-                              setListingNFT(nft.id);
-                              setListPrice("1.0");
-                            }}
-                            className="w-full bg-black text-white py-2 rounded font-semibold hover:bg-gray-800 transition-colors text-sm mt-2"
-                          >
-                            List for Sale
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <CollectionTab
+            nfts={nfts}
+            loadingNfts={loadingNfts}
+            publicKey={publicKey?.toString()}
+            listingNFT={listingNFT}
+            listPrice={listPrice}
+            loading={loading}
+            setListingNFT={setListingNFT}
+            setListPrice={setListPrice}
+            handleListNFT={handleListNFT}
+            handleImageError={handleImageError}
+            getNFTImage={getNFTImage}
+            getNFTName={getNFTName}
+            nftMetadata={nftMetadata}
+          />
         )}
       </div>
-    </div>
+    </main>
   );
 }
