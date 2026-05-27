@@ -20,6 +20,7 @@ import {
   createInitializeMintInstruction,
   createMintToInstruction,
   getAssociatedTokenAddress,
+  getMint,
   getMinimumBalanceForRentExemptMint,
   MINT_SIZE,
   TOKEN_PROGRAM_ID,
@@ -77,6 +78,7 @@ type EscrowAccount = {
 
 type EscrowAccountClient = {
   all: () => Promise<EscrowAccount[]>;
+  fetchNullable: (address: PublicKey) => Promise<EscrowAccount["account"] | null>;
 };
 
 type TokenForm = {
@@ -84,12 +86,21 @@ type TokenForm = {
   symbol: string;
   description: string;
   amount: string;
+  decimals: number;
   existingMintInput: string;
   imageFile: File | null;
   imagePreview: string;
   mintAddress: string;
+  tokenAccountAddress: string;
   metadataUri: string;
   txSig: string;
+};
+
+type WalletToken = {
+  mintAddress: string;
+  ataAddress: string;
+  balance: string;
+  decimals: number;
 };
 
 type LaunchSide = "maker" | "taker";
@@ -99,10 +110,12 @@ const emptyTokenForm: TokenForm = {
   symbol: "",
   description: "",
   amount: "",
+  decimals: DECIMALS,
   existingMintInput: "",
   imageFile: null,
   imagePreview: "",
   mintAddress: "",
+  tokenAccountAddress: "",
   metadataUri: "",
   txSig: "",
 };
@@ -170,12 +183,15 @@ const toRawAmount = (value: string, decimals = DECIMALS) => {
   return new anchor.BN(`${whole || "0"}${paddedFraction}`);
 };
 
-const formatRawAmount = (amount: anchor.BN, decimals = DECIMALS) => {
-  const raw = amount.toString().padStart(decimals + 1, "0");
+const formatRawUnits = (amount: string, decimals = DECIMALS) => {
+  const raw = amount.padStart(decimals + 1, "0");
   const whole = raw.slice(0, -decimals);
   const fraction = raw.slice(-decimals).replace(/0+$/, "");
   return fraction ? `${whole}.${fraction}` : whole;
 };
+
+const formatRawAmount = (amount: anchor.BN, decimals = DECIMALS) =>
+  formatRawUnits(amount.toString(), decimals);
 
 const getEscrowPda = (
   maker: PublicKey,
@@ -206,6 +222,7 @@ export default function EscrowUI() {
   const [error, setError] = useState("");
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [escrows, setEscrows] = useState<EscrowAccount[]>([]);
+  const [walletTokens, setWalletTokens] = useState<WalletToken[]>([]);
   const [selectedEscrow, setSelectedEscrow] = useState<EscrowAccount | null>(
     null
   );
@@ -265,8 +282,75 @@ export default function EscrowUI() {
     try {
       const accounts = await escrowClient.escrow.all();
       setEscrows(accounts);
+      setSelectedEscrow((current) =>
+        current &&
+        accounts.some((account) => account.publicKey.equals(current.publicKey))
+          ? current
+          : null
+      );
     } catch (err) {
       console.error("Fetch escrow error:", err);
+    }
+  };
+
+  const fetchFreshEscrow = async (escrow: PublicKey) => {
+    try {
+      const account = await escrowClient.escrow.fetchNullable(escrow);
+      if (!account) {
+        throw new Error("This escrow no longer exists. Refresh escrows and select a current one.");
+      }
+
+      return account;
+    } catch (err) {
+      console.error("Fresh escrow fetch error:", err);
+      throw new Error(
+        "This escrow account is stale or from an older program version. Refresh escrows and select a newly created escrow."
+      );
+    }
+  };
+
+  const fetchWalletTokens = async () => {
+    if (!wallet.publicKey) return;
+
+    try {
+      const accounts = await connection.getParsedTokenAccountsByOwner(
+        wallet.publicKey,
+        { programId: TOKEN_PROGRAM_ID }
+      );
+
+      const tokens = accounts.value.reduce<WalletToken[]>((items, { account, pubkey }) => {
+          const parsed = account.data.parsed as {
+            info: {
+              mint: string;
+              tokenAmount: {
+                amount: string;
+                decimals: number;
+                uiAmountString?: string;
+              };
+            };
+          };
+          const { mint, tokenAmount } = parsed.info;
+
+          if (tokenAmount.amount === "0") {
+            return items;
+          }
+
+          items.push({
+            mintAddress: mint,
+            ataAddress: pubkey.toBase58(),
+            balance:
+              tokenAmount.uiAmountString ??
+              formatRawUnits(tokenAmount.amount, tokenAmount.decimals),
+            decimals: tokenAmount.decimals,
+          });
+
+          return items;
+        }, []);
+
+      setWalletTokens(tokens);
+    } catch (err) {
+      console.error("Fetch wallet tokens error:", err);
+      setWalletTokens([]);
     }
   };
 
@@ -274,10 +358,12 @@ export default function EscrowUI() {
     if (!wallet.publicKey) {
       setSolBalance(null);
       setEscrows([]);
+      setWalletTokens([]);
       return;
     }
 
     fetchEscrows();
+    fetchWalletTokens();
     connection
       .getBalance(wallet.publicKey)
       .then((lamports) => setSolBalance(lamports / LAMPORTS_PER_SOL))
@@ -312,19 +398,42 @@ export default function EscrowUI() {
   const clearImage = (side: LaunchSide) =>
     updateToken(side, { imageFile: null, imagePreview: "" });
 
+  const clearSelectedToken = (side: LaunchSide) =>
+    updateToken(side, {
+      mintAddress: "",
+      tokenAccountAddress: "",
+      metadataUri: "",
+      txSig: "",
+      existingMintInput: "",
+      decimals: DECIMALS,
+    });
+
   const copyText = async (value: string) => {
     await navigator.clipboard.writeText(value);
   };
 
-  const selectExistingMint = (side: LaunchSide) => {
+  const selectWalletToken = (side: LaunchSide, token: WalletToken) => {
+    updateToken(side, {
+      mintAddress: token.mintAddress,
+      tokenAccountAddress: token.ataAddress,
+      existingMintInput: token.mintAddress,
+      decimals: token.decimals,
+    });
+  };
+
+  const selectExistingMint = async (side: LaunchSide) => {
     const token = side === "maker" ? makerToken : takerToken;
 
-    try {
+    await runAction("Selecting existing token mint...", async () => {
       const mint = new PublicKey(token.existingMintInput.trim());
-      updateToken(side, { mintAddress: mint.toBase58() });
-    } catch {
-      setError("Enter a valid SPL token mint address");
-    }
+      const mintAccount = await getMint(connection, mint, "confirmed", TOKEN_PROGRAM_ID);
+
+      updateToken(side, {
+        mintAddress: mint.toBase58(),
+        tokenAccountAddress: "",
+        decimals: mintAccount.decimals,
+      });
+    });
   };
 
   const runAction = async (label: string, action: () => Promise<void>) => {
@@ -337,7 +446,11 @@ export default function EscrowUI() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Transaction failed";
       console.error(err);
-      setError(message);
+      setError(
+        message.includes("AccountDidNotDeserialize")
+          ? "This escrow account is stale or from an older program version. Refresh escrows and select a newly created escrow."
+          : message
+      );
     } finally {
       setLoading(false);
       setStatus("");
@@ -451,10 +564,13 @@ export default function EscrowUI() {
 
       updateToken(side, {
         mintAddress: mint.toBase58(),
+        tokenAccountAddress: ata.toBase58(),
         metadataUri,
         txSig: signature,
+        decimals: DECIMALS,
       });
 
+      await fetchWalletTokens();
       await fetchEscrows();
     });
   };
@@ -462,7 +578,7 @@ export default function EscrowUI() {
   const initializeEscrow = async () => {
     await runAction("Creating escrow...", async () => {
       if (!wallet.publicKey) throw new Error("Connect your wallet first");
-      if (!makerToken.mintAddress) throw new Error("Launch maker token first");
+      if (!makerToken.mintAddress) throw new Error("Select or launch a maker token first");
 
       const makerMint = new PublicKey(makerToken.mintAddress);
       const escrowIdBn = new anchor.BN(escrowId || "0");
@@ -474,7 +590,7 @@ export default function EscrowUI() {
       );
 
       await program.methods
-        .inizialiseEscrow(escrowIdBn, toRawAmount(makerAmount))
+        .inizialiseEscrow(escrowIdBn, toRawAmount(makerAmount, makerToken.decimals))
         .accounts({
           escrow: escrowPda,
           maker: wallet.publicKey,
@@ -491,13 +607,15 @@ export default function EscrowUI() {
   const depositMakerTokens = async () => {
     await runAction("Depositing maker tokens...", async () => {
       if (!wallet.publicKey) throw new Error("Connect your wallet first");
-      if (!makerToken.mintAddress) throw new Error("Launch maker token first");
+      if (!makerToken.mintAddress) throw new Error("Select or launch a maker token first");
 
       const makerMint = new PublicKey(makerToken.mintAddress);
       const escrowIdBn = new anchor.BN(escrowId || "0");
       const escrowPda =
         createdEscrow ?? getEscrowPda(wallet.publicKey, makerMint, escrowIdBn, program.programId);
-      const makerAta = await getAssociatedTokenAddress(makerMint, wallet.publicKey);
+      const makerAta = makerToken.tokenAccountAddress
+        ? new PublicKey(makerToken.tokenAccountAddress)
+        : await getAssociatedTokenAddress(makerMint, wallet.publicKey);
       const escrowMakeAta = await getAssociatedTokenAddress(
         makerMint,
         escrowPda,
@@ -527,12 +645,22 @@ export default function EscrowUI() {
       if (!wallet.publicKey) throw new Error("Connect your wallet first");
       if (!selectedEscrow) throw new Error("Select an escrow first");
       if (!takerToken.mintAddress) {
-        throw new Error("Launch or paste the taker token mint first");
+        throw new Error("Select, launch, or paste the taker token mint first");
       }
 
       const escrow = selectedEscrow.publicKey;
+      const escrowData = await fetchFreshEscrow(escrow);
+      if (!escrowData.depositMaker) {
+        throw new Error("The maker has not funded this escrow yet");
+      }
+      if (escrowData.depositTaker) {
+        throw new Error("This escrow already has a taker offer");
+      }
+
       const takerMint = new PublicKey(takerToken.mintAddress);
-      const payAta = await getAssociatedTokenAddress(takerMint, wallet.publicKey);
+      const payAta = takerToken.tokenAccountAddress
+        ? new PublicKey(takerToken.tokenAccountAddress)
+        : await getAssociatedTokenAddress(takerMint, wallet.publicKey);
       const payAtaAccount = await connection.getAccountInfo(payAta);
       if (!payAtaAccount) {
         throw new Error("Your wallet does not have a token account for this taker mint");
@@ -545,7 +673,7 @@ export default function EscrowUI() {
       );
 
       await program.methods
-        .takeEscrow(toRawAmount(takerAmount))
+        .takeEscrow(toRawAmount(takerAmount, takerToken.decimals))
         .accounts({
           escrow,
           taker: wallet.publicKey,
@@ -567,7 +695,10 @@ export default function EscrowUI() {
       if (!wallet.publicKey) throw new Error("Connect your wallet first");
 
       const escrow = escrowToExecute.publicKey;
-      const data = escrowToExecute.account;
+      const data = await fetchFreshEscrow(escrow);
+      if (!data.maker.equals(wallet.publicKey)) {
+        throw new Error("Only the maker can execute this escrow");
+      }
       if (data.taker.toBase58() === ZERO_PUBKEY) {
         throw new Error("Taker has not joined this escrow yet");
       }
@@ -655,7 +786,7 @@ export default function EscrowUI() {
       }
 
       const escrow = escrowToReject.publicKey;
-      const data = escrowToReject.account;
+      const data = await fetchFreshEscrow(escrow);
       if (data.taker.toBase58() === ZERO_PUBKEY) {
         throw new Error("No taker offer exists on this escrow");
       }
@@ -705,16 +836,53 @@ export default function EscrowUI() {
           {token.mintAddress && (
             <span className="inline-flex items-center gap-2 rounded-lg border border-emerald-300/25 bg-emerald-400/10 px-3 py-2 text-xs font-black text-emerald-200">
               <CheckCircle2 className="h-4 w-4" />
-              Token live
+              Token selected
             </span>
           )}
         </div>
 
         <div className="mt-6 grid gap-5">
           <div className="rounded-lg border border-white/10 bg-[#080a1d]/55 p-4">
+            {walletTokens.length > 0 && !token.mintAddress && (
+              <div className="mb-5">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-sm font-black text-slate-100">Use Coins From Your Wallet</p>
+                  <button
+                    onClick={fetchWalletTokens}
+                    disabled={loading || !wallet.publicKey}
+                    className="text-xs font-bold text-violet-200 transition hover:text-white disabled:opacity-45"
+                  >
+                    Refresh
+                  </button>
+                </div>
+                <div className="grid max-h-64 gap-2 overflow-y-auto pr-1">
+                  {walletTokens.map((walletToken) => (
+                    <button
+                      key={`${side}-${walletToken.ataAddress}`}
+                      onClick={() => selectWalletToken(side, walletToken)}
+                      disabled={loading}
+                      className="grid gap-2 rounded-lg border border-white/10 bg-white/[0.045] p-3 text-left transition hover:border-violet-300/50 disabled:cursor-not-allowed disabled:opacity-45 sm:grid-cols-[1fr_auto] sm:items-center"
+                    >
+                      <span>
+                        <span className="block font-mono text-xs text-slate-400">
+                          {shortenKey(walletToken.mintAddress)}
+                        </span>
+                        <span className="mt-1 block break-all font-mono text-[11px] font-normal text-slate-500">
+                          {walletToken.mintAddress}
+                        </span>
+                      </span>
+                      <span className="rounded-lg border border-emerald-300/20 bg-emerald-400/10 px-3 py-2 text-xs font-black text-emerald-200">
+                        {walletToken.balance}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <label className="grid flex-1 gap-2 text-sm font-bold text-slate-200">
-                Use Existing SPL Token Mint
+                Paste Any SPL Token Mint
                 <input
                   value={token.existingMintInput}
                   onChange={(event) =>
@@ -735,7 +903,7 @@ export default function EscrowUI() {
               </button>
             </div>
             <p className="mt-3 text-xs leading-5 text-slate-400">
-              Use this if the token already exists in your wallet. Otherwise launch a new SPL token below.
+              You do not need to own the mint authority. You only need a token account with balance when depositing.
             </p>
           </div>
 
@@ -830,7 +998,7 @@ export default function EscrowUI() {
           {token.mintAddress && (
             <div className="rounded-lg border border-emerald-300/20 bg-emerald-400/10 p-4">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-black text-emerald-200">Mint Address</p>
+                <p className="text-sm font-black text-emerald-200">Selected Mint</p>
                 <button
                   onClick={() => copyText(token.mintAddress)}
                   className="text-violet-200 transition hover:text-white"
@@ -841,6 +1009,9 @@ export default function EscrowUI() {
               </div>
               <p className="mt-2 break-all font-mono text-xs leading-5 text-slate-300">
                 {token.mintAddress}
+              </p>
+              <p className="mt-2 text-xs text-slate-400">
+                Decimals: {token.decimals}
               </p>
               <div className="mt-4 flex flex-wrap gap-3">
                 <a
@@ -861,6 +1032,13 @@ export default function EscrowUI() {
                     View Tx <ExternalLink className="h-3.5 w-3.5" />
                   </a>
                 )}
+                <button
+                  onClick={() => clearSelectedToken(side)}
+                  disabled={loading}
+                  className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  Change Token
+                </button>
               </div>
             </div>
           )}

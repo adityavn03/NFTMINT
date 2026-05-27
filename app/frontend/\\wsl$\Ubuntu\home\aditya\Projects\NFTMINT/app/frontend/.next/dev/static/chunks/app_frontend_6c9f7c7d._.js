@@ -71,10 +71,12 @@ const emptyTokenForm = {
     symbol: "",
     description: "",
     amount: "",
+    decimals: DECIMALS,
     existingMintInput: "",
     imageFile: null,
     imagePreview: "",
     mintAddress: "",
+    tokenAccountAddress: "",
     metadataUri: "",
     txSig: ""
 };
@@ -129,12 +131,13 @@ const toRawAmount = (value, decimals = DECIMALS)=>{
     const paddedFraction = fraction.padEnd(decimals, "0");
     return new __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$bn$2e$js$2f$lib$2f$bn$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__BN$3e$__["BN"](`${whole || "0"}${paddedFraction}`);
 };
-const formatRawAmount = (amount, decimals = DECIMALS)=>{
-    const raw = amount.toString().padStart(decimals + 1, "0");
+const formatRawUnits = (amount, decimals = DECIMALS)=>{
+    const raw = amount.padStart(decimals + 1, "0");
     const whole = raw.slice(0, -decimals);
     const fraction = raw.slice(-decimals).replace(/0+$/, "");
     return fraction ? `${whole}.${fraction}` : whole;
 };
+const formatRawAmount = (amount, decimals = DECIMALS)=>formatRawUnits(amount.toString(), decimals);
 const getEscrowPda = (maker, mintMaker, escrowId, programId)=>__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$web3$2e$js$2f$lib$2f$index$2e$browser$2e$esm$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["PublicKey"].findProgramAddressSync([
         __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$buffer$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Buffer"].from("escrow"),
         maker.toBuffer(),
@@ -152,6 +155,7 @@ function EscrowUI() {
     const [error, setError] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])("");
     const [solBalance, setSolBalance] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
     const [escrows, setEscrows] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])([]);
+    const [walletTokens, setWalletTokens] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])([]);
     const [selectedEscrow, setSelectedEscrow] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
     const [makerToken, setMakerToken] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])({
         ...emptyTokenForm,
@@ -195,8 +199,47 @@ function EscrowUI() {
         try {
             const accounts = await escrowClient.escrow.all();
             setEscrows(accounts);
+            setSelectedEscrow((current)=>current && accounts.some((account)=>account.publicKey.equals(current.publicKey)) ? current : null);
         } catch (err) {
             console.error("Fetch escrow error:", err);
+        }
+    };
+    const fetchFreshEscrow = async (escrow)=>{
+        try {
+            const account = await escrowClient.escrow.fetchNullable(escrow);
+            if (!account) {
+                throw new Error("This escrow no longer exists. Refresh escrows and select a current one.");
+            }
+            return account;
+        } catch (err) {
+            console.error("Fresh escrow fetch error:", err);
+            throw new Error("This escrow account is stale or from an older program version. Refresh escrows and select a newly created escrow.");
+        }
+    };
+    const fetchWalletTokens = async ()=>{
+        if (!wallet.publicKey) return;
+        try {
+            const accounts = await connection.getParsedTokenAccountsByOwner(wallet.publicKey, {
+                programId: __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$spl$2d$token$2f$lib$2f$esm$2f$constants$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["TOKEN_PROGRAM_ID"]
+            });
+            const tokens = accounts.value.reduce((items, { account, pubkey })=>{
+                const parsed = account.data.parsed;
+                const { mint, tokenAmount } = parsed.info;
+                if (tokenAmount.amount === "0") {
+                    return items;
+                }
+                items.push({
+                    mintAddress: mint,
+                    ataAddress: pubkey.toBase58(),
+                    balance: tokenAmount.uiAmountString ?? formatRawUnits(tokenAmount.amount, tokenAmount.decimals),
+                    decimals: tokenAmount.decimals
+                });
+                return items;
+            }, []);
+            setWalletTokens(tokens);
+        } catch (err) {
+            console.error("Fetch wallet tokens error:", err);
+            setWalletTokens([]);
         }
     };
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
@@ -204,9 +247,11 @@ function EscrowUI() {
             if (!wallet.publicKey) {
                 setSolBalance(null);
                 setEscrows([]);
+                setWalletTokens([]);
                 return;
             }
             fetchEscrows();
+            fetchWalletTokens();
             connection.getBalance(wallet.publicKey).then({
                 "EscrowUI.useEffect": (lamports)=>setSolBalance(lamports / __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$web3$2e$js$2f$lib$2f$index$2e$browser$2e$esm$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["LAMPORTS_PER_SOL"])
             }["EscrowUI.useEffect"]).catch({
@@ -247,19 +292,36 @@ function EscrowUI() {
             imageFile: null,
             imagePreview: ""
         });
+    const clearSelectedToken = (side)=>updateToken(side, {
+            mintAddress: "",
+            tokenAccountAddress: "",
+            metadataUri: "",
+            txSig: "",
+            existingMintInput: "",
+            decimals: DECIMALS
+        });
     const copyText = async (value)=>{
         await navigator.clipboard.writeText(value);
     };
-    const selectExistingMint = (side)=>{
+    const selectWalletToken = (side, token)=>{
+        updateToken(side, {
+            mintAddress: token.mintAddress,
+            tokenAccountAddress: token.ataAddress,
+            existingMintInput: token.mintAddress,
+            decimals: token.decimals
+        });
+    };
+    const selectExistingMint = async (side)=>{
         const token = side === "maker" ? makerToken : takerToken;
-        try {
+        await runAction("Selecting existing token mint...", async ()=>{
             const mint = new __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$web3$2e$js$2f$lib$2f$index$2e$browser$2e$esm$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["PublicKey"](token.existingMintInput.trim());
+            const mintAccount = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$spl$2d$token$2f$lib$2f$esm$2f$state$2f$mint$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["getMint"])(connection, mint, "confirmed", __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$spl$2d$token$2f$lib$2f$esm$2f$constants$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["TOKEN_PROGRAM_ID"]);
             updateToken(side, {
-                mintAddress: mint.toBase58()
+                mintAddress: mint.toBase58(),
+                tokenAccountAddress: "",
+                decimals: mintAccount.decimals
             });
-        } catch  {
-            setError("Enter a valid SPL token mint address");
-        }
+        });
     };
     const runAction = async (label, action)=>{
         setLoading(true);
@@ -270,7 +332,7 @@ function EscrowUI() {
         } catch (err) {
             const message = err instanceof Error ? err.message : "Transaction failed";
             console.error(err);
-            setError(message);
+            setError(message.includes("AccountDidNotDeserialize") ? "This escrow account is stale or from an older program version. Refresh escrows and select a newly created escrow." : message);
         } finally{
             setLoading(false);
             setStatus("");
@@ -351,20 +413,23 @@ function EscrowUI() {
             }, "confirmed");
             updateToken(side, {
                 mintAddress: mint.toBase58(),
+                tokenAccountAddress: ata.toBase58(),
                 metadataUri,
-                txSig: signature
+                txSig: signature,
+                decimals: DECIMALS
             });
+            await fetchWalletTokens();
             await fetchEscrows();
         });
     };
     const initializeEscrow = async ()=>{
         await runAction("Creating escrow...", async ()=>{
             if (!wallet.publicKey) throw new Error("Connect your wallet first");
-            if (!makerToken.mintAddress) throw new Error("Launch maker token first");
+            if (!makerToken.mintAddress) throw new Error("Select or launch a maker token first");
             const makerMint = new __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$web3$2e$js$2f$lib$2f$index$2e$browser$2e$esm$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["PublicKey"](makerToken.mintAddress);
             const escrowIdBn = new __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$bn$2e$js$2f$lib$2f$bn$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__BN$3e$__["BN"](escrowId || "0");
             const escrowPda = getEscrowPda(wallet.publicKey, makerMint, escrowIdBn, program.programId);
-            await program.methods.inizialiseEscrow(escrowIdBn, toRawAmount(makerAmount)).accounts({
+            await program.methods.inizialiseEscrow(escrowIdBn, toRawAmount(makerAmount, makerToken.decimals)).accounts({
                 escrow: escrowPda,
                 maker: wallet.publicKey,
                 mintMaker: makerMint,
@@ -377,11 +442,11 @@ function EscrowUI() {
     const depositMakerTokens = async ()=>{
         await runAction("Depositing maker tokens...", async ()=>{
             if (!wallet.publicKey) throw new Error("Connect your wallet first");
-            if (!makerToken.mintAddress) throw new Error("Launch maker token first");
+            if (!makerToken.mintAddress) throw new Error("Select or launch a maker token first");
             const makerMint = new __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$web3$2e$js$2f$lib$2f$index$2e$browser$2e$esm$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["PublicKey"](makerToken.mintAddress);
             const escrowIdBn = new __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$bn$2e$js$2f$lib$2f$bn$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__BN$3e$__["BN"](escrowId || "0");
             const escrowPda = createdEscrow ?? getEscrowPda(wallet.publicKey, makerMint, escrowIdBn, program.programId);
-            const makerAta = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$spl$2d$token$2f$lib$2f$esm$2f$state$2f$mint$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["getAssociatedTokenAddress"])(makerMint, wallet.publicKey);
+            const makerAta = makerToken.tokenAccountAddress ? new __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$web3$2e$js$2f$lib$2f$index$2e$browser$2e$esm$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["PublicKey"](makerToken.tokenAccountAddress) : await (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$spl$2d$token$2f$lib$2f$esm$2f$state$2f$mint$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["getAssociatedTokenAddress"])(makerMint, wallet.publicKey);
             const escrowMakeAta = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$spl$2d$token$2f$lib$2f$esm$2f$state$2f$mint$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["getAssociatedTokenAddress"])(makerMint, escrowPda, true);
             await program.methods.depositMaker().accounts({
                 escrow: escrowPda,
@@ -401,17 +466,24 @@ function EscrowUI() {
             if (!wallet.publicKey) throw new Error("Connect your wallet first");
             if (!selectedEscrow) throw new Error("Select an escrow first");
             if (!takerToken.mintAddress) {
-                throw new Error("Launch or paste the taker token mint first");
+                throw new Error("Select, launch, or paste the taker token mint first");
             }
             const escrow = selectedEscrow.publicKey;
+            const escrowData = await fetchFreshEscrow(escrow);
+            if (!escrowData.depositMaker) {
+                throw new Error("The maker has not funded this escrow yet");
+            }
+            if (escrowData.depositTaker) {
+                throw new Error("This escrow already has a taker offer");
+            }
             const takerMint = new __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$web3$2e$js$2f$lib$2f$index$2e$browser$2e$esm$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["PublicKey"](takerToken.mintAddress);
-            const payAta = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$spl$2d$token$2f$lib$2f$esm$2f$state$2f$mint$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["getAssociatedTokenAddress"])(takerMint, wallet.publicKey);
+            const payAta = takerToken.tokenAccountAddress ? new __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$web3$2e$js$2f$lib$2f$index$2e$browser$2e$esm$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["PublicKey"](takerToken.tokenAccountAddress) : await (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$spl$2d$token$2f$lib$2f$esm$2f$state$2f$mint$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["getAssociatedTokenAddress"])(takerMint, wallet.publicKey);
             const payAtaAccount = await connection.getAccountInfo(payAta);
             if (!payAtaAccount) {
                 throw new Error("Your wallet does not have a token account for this taker mint");
             }
             const escrowTakerAta = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$spl$2d$token$2f$lib$2f$esm$2f$state$2f$mint$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["getAssociatedTokenAddress"])(takerMint, escrow, true);
-            await program.methods.takeEscrow(toRawAmount(takerAmount)).accounts({
+            await program.methods.takeEscrow(toRawAmount(takerAmount, takerToken.decimals)).accounts({
                 escrow,
                 taker: wallet.publicKey,
                 mintTaker: takerMint,
@@ -428,7 +500,10 @@ function EscrowUI() {
         await runAction("Executing escrow swap...", async ()=>{
             if (!wallet.publicKey) throw new Error("Connect your wallet first");
             const escrow = escrowToExecute.publicKey;
-            const data = escrowToExecute.account;
+            const data = await fetchFreshEscrow(escrow);
+            if (!data.maker.equals(wallet.publicKey)) {
+                throw new Error("Only the maker can execute this escrow");
+            }
             if (data.taker.toBase58() === ZERO_PUBKEY) {
                 throw new Error("Taker has not joined this escrow yet");
             }
@@ -474,7 +549,7 @@ function EscrowUI() {
                 throw new Error("Only the maker can reject this offer");
             }
             const escrow = escrowToReject.publicKey;
-            const data = escrowToReject.account;
+            const data = await fetchFreshEscrow(escrow);
             if (data.taker.toBase58() === ZERO_PUBKEY) {
                 throw new Error("No taker offer exists on this escrow");
             }
@@ -510,12 +585,12 @@ function EscrowUI() {
                                         className: "h-6 w-6"
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 698,
+                                        lineNumber: 829,
                                         columnNumber: 15
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 697,
+                                    lineNumber: 828,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -525,7 +600,7 @@ function EscrowUI() {
                                             children: title
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 701,
+                                            lineNumber: 832,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -533,19 +608,19 @@ function EscrowUI() {
                                             children: copy
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 702,
+                                            lineNumber: 833,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 700,
+                                    lineNumber: 831,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 696,
+                            lineNumber: 827,
                             columnNumber: 11
                         }, this),
                         token.mintAddress && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -555,20 +630,20 @@ function EscrowUI() {
                                     className: "h-4 w-4"
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 707,
+                                    lineNumber: 838,
                                     columnNumber: 15
                                 }, this),
-                                "Token live"
+                                "Token selected"
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 706,
+                            lineNumber: 837,
                             columnNumber: 13
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                    lineNumber: 695,
+                    lineNumber: 826,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -577,13 +652,99 @@ function EscrowUI() {
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                             className: "rounded-lg border border-white/10 bg-[#080a1d]/55 p-4",
                             children: [
+                                walletTokens.length > 0 && !token.mintAddress && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                    className: "mb-5",
+                                    children: [
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                            className: "mb-3 flex items-center justify-between gap-3",
+                                            children: [
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                                    className: "text-sm font-black text-slate-100",
+                                                    children: "Use Coins From Your Wallet"
+                                                }, void 0, false, {
+                                                    fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
+                                                    lineNumber: 849,
+                                                    columnNumber: 19
+                                                }, this),
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                                    onClick: fetchWalletTokens,
+                                                    disabled: loading || !wallet.publicKey,
+                                                    className: "text-xs font-bold text-violet-200 transition hover:text-white disabled:opacity-45",
+                                                    children: "Refresh"
+                                                }, void 0, false, {
+                                                    fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
+                                                    lineNumber: 850,
+                                                    columnNumber: 19
+                                                }, this)
+                                            ]
+                                        }, void 0, true, {
+                                            fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
+                                            lineNumber: 848,
+                                            columnNumber: 17
+                                        }, this),
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                            className: "grid max-h-64 gap-2 overflow-y-auto pr-1",
+                                            children: walletTokens.map((walletToken)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                                    onClick: ()=>selectWalletToken(side, walletToken),
+                                                    disabled: loading,
+                                                    className: "grid gap-2 rounded-lg border border-white/10 bg-white/[0.045] p-3 text-left transition hover:border-violet-300/50 disabled:cursor-not-allowed disabled:opacity-45 sm:grid-cols-[1fr_auto] sm:items-center",
+                                                    children: [
+                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                            children: [
+                                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                                    className: "block font-mono text-xs text-slate-400",
+                                                                    children: shortenKey(walletToken.mintAddress)
+                                                                }, void 0, false, {
+                                                                    fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
+                                                                    lineNumber: 867,
+                                                                    columnNumber: 25
+                                                                }, this),
+                                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                                    className: "mt-1 block break-all font-mono text-[11px] font-normal text-slate-500",
+                                                                    children: walletToken.mintAddress
+                                                                }, void 0, false, {
+                                                                    fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
+                                                                    lineNumber: 870,
+                                                                    columnNumber: 25
+                                                                }, this)
+                                                            ]
+                                                        }, void 0, true, {
+                                                            fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
+                                                            lineNumber: 866,
+                                                            columnNumber: 23
+                                                        }, this),
+                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                            className: "rounded-lg border border-emerald-300/20 bg-emerald-400/10 px-3 py-2 text-xs font-black text-emerald-200",
+                                                            children: walletToken.balance
+                                                        }, void 0, false, {
+                                                            fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
+                                                            lineNumber: 874,
+                                                            columnNumber: 23
+                                                        }, this)
+                                                    ]
+                                                }, `${side}-${walletToken.ataAddress}`, true, {
+                                                    fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
+                                                    lineNumber: 860,
+                                                    columnNumber: 21
+                                                }, this))
+                                        }, void 0, false, {
+                                            fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
+                                            lineNumber: 858,
+                                            columnNumber: 17
+                                        }, this)
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
+                                    lineNumber: 847,
+                                    columnNumber: 15
+                                }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                     className: "flex flex-col gap-3 sm:flex-row sm:items-end",
                                     children: [
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
                                             className: "grid flex-1 gap-2 text-sm font-bold text-slate-200",
                                             children: [
-                                                "Use Existing SPL Token Mint",
+                                                "Paste Any SPL Token Mint",
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
                                                     value: token.existingMintInput,
                                                     onChange: (event)=>updateToken(side, {
@@ -594,13 +755,13 @@ function EscrowUI() {
                                                     className: "min-h-11 rounded-lg border border-white/10 bg-[#050719]/75 px-4 font-mono text-xs text-white outline-none transition placeholder:text-slate-500 focus:border-violet-300/60 disabled:opacity-50"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                    lineNumber: 718,
+                                                    lineNumber: 886,
                                                     columnNumber: 17
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 716,
+                                            lineNumber: 884,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -612,34 +773,34 @@ function EscrowUI() {
                                                     className: "h-4 w-4"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                    lineNumber: 733,
+                                                    lineNumber: 901,
                                                     columnNumber: 17
                                                 }, this),
                                                 "Use Mint"
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 728,
+                                            lineNumber: 896,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 715,
+                                    lineNumber: 883,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                     className: "mt-3 text-xs leading-5 text-slate-400",
-                                    children: "Use this if the token already exists in your wallet. Otherwise launch a new SPL token below."
+                                    children: "You do not need to own the mint authority. You only need a token account with balance when depositing."
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 737,
+                                    lineNumber: 905,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 714,
+                            lineNumber: 845,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -659,13 +820,13 @@ function EscrowUI() {
                                             className: "min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-violet-300/60 disabled:opacity-50"
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 745,
+                                            lineNumber: 913,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 743,
+                                    lineNumber: 911,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -683,19 +844,19 @@ function EscrowUI() {
                                             className: "min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm uppercase text-white outline-none transition placeholder:text-slate-500 focus:border-violet-300/60 disabled:opacity-50"
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 755,
+                                            lineNumber: 923,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 753,
+                                    lineNumber: 921,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 742,
+                            lineNumber: 910,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -713,13 +874,13 @@ function EscrowUI() {
                                     className: "resize-none rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-violet-300/60 disabled:opacity-50"
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 770,
+                                    lineNumber: 938,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 768,
+                            lineNumber: 936,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -738,13 +899,13 @@ function EscrowUI() {
                                     className: "min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-violet-300/60 disabled:opacity-50"
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 782,
+                                    lineNumber: 950,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 780,
+                            lineNumber: 948,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -762,14 +923,14 @@ function EscrowUI() {
                                             onChange: handleImageChange(side)
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 797,
+                                            lineNumber: 965,
                                             columnNumber: 17
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$upload$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Upload$3e$__["Upload"], {
                                             className: "mb-3 h-9 w-9 text-violet-300"
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 804,
+                                            lineNumber: 972,
                                             columnNumber: 17
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -777,7 +938,7 @@ function EscrowUI() {
                                             children: "Upload token artwork"
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 805,
+                                            lineNumber: 973,
                                             columnNumber: 17
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -785,13 +946,13 @@ function EscrowUI() {
                                             children: "PNG or JPG recommended"
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 806,
+                                            lineNumber: 974,
                                             columnNumber: 17
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 796,
+                                    lineNumber: 964,
                                     columnNumber: 15
                                 }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                     className: "relative overflow-hidden rounded-lg border border-white/10 bg-[#080a1d]",
@@ -803,7 +964,7 @@ function EscrowUI() {
                                             }
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 812,
+                                            lineNumber: 980,
                                             columnNumber: 17
                                         }, this),
                                         !token.mintAddress && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -815,24 +976,24 @@ function EscrowUI() {
                                                 className: "h-5 w-5"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 823,
+                                                lineNumber: 991,
                                                 columnNumber: 21
                                             }, this)
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 817,
+                                            lineNumber: 985,
                                             columnNumber: 19
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 811,
+                                    lineNumber: 979,
                                     columnNumber: 15
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 793,
+                            lineNumber: 961,
                             columnNumber: 11
                         }, this),
                         token.mintAddress && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -843,10 +1004,10 @@ function EscrowUI() {
                                     children: [
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                             className: "text-sm font-black text-emerald-200",
-                                            children: "Mint Address"
+                                            children: "Selected Mint"
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 833,
+                                            lineNumber: 1001,
                                             columnNumber: 17
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -857,18 +1018,18 @@ function EscrowUI() {
                                                 className: "h-4 w-4"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 839,
+                                                lineNumber: 1007,
                                                 columnNumber: 19
                                             }, this)
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 834,
+                                            lineNumber: 1002,
                                             columnNumber: 17
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 832,
+                                    lineNumber: 1000,
                                     columnNumber: 15
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -876,7 +1037,18 @@ function EscrowUI() {
                                     children: token.mintAddress
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 842,
+                                    lineNumber: 1010,
+                                    columnNumber: 15
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                    className: "mt-2 text-xs text-slate-400",
+                                    children: [
+                                        "Decimals: ",
+                                        token.decimals
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
+                                    lineNumber: 1013,
                                     columnNumber: 15
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -893,13 +1065,13 @@ function EscrowUI() {
                                                     className: "h-3.5 w-3.5"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                    lineNumber: 852,
+                                                    lineNumber: 1023,
                                                     columnNumber: 29
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 846,
+                                            lineNumber: 1017,
                                             columnNumber: 17
                                         }, this),
                                         token.txSig && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("a", {
@@ -913,25 +1085,35 @@ function EscrowUI() {
                                                     className: "h-3.5 w-3.5"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                    lineNumber: 861,
+                                                    lineNumber: 1032,
                                                     columnNumber: 29
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 855,
+                                            lineNumber: 1026,
                                             columnNumber: 19
+                                        }, this),
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                            onClick: ()=>clearSelectedToken(side),
+                                            disabled: loading,
+                                            className: "inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-45",
+                                            children: "Change Token"
+                                        }, void 0, false, {
+                                            fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
+                                            lineNumber: 1035,
+                                            columnNumber: 17
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 845,
+                                    lineNumber: 1016,
                                     columnNumber: 15
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 831,
+                            lineNumber: 999,
                             columnNumber: 13
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -943,32 +1125,32 @@ function EscrowUI() {
                                     className: "h-4 w-4 animate-spin"
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 881,
+                                    lineNumber: 1059,
                                     columnNumber: 24
                                 }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$rocket$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Rocket$3e$__["Rocket"], {
                                     className: "h-4 w-4"
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 881,
+                                    lineNumber: 1059,
                                     columnNumber: 71
                                 }, this),
                                 token.mintAddress ? "Token Launched" : "Launch SPL Token"
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 868,
+                            lineNumber: 1046,
                             columnNumber: 11
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                    lineNumber: 713,
+                    lineNumber: 844,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-            lineNumber: 694,
+            lineNumber: 825,
             columnNumber: 7
         }, this);
     };
@@ -992,7 +1174,7 @@ function EscrowUI() {
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 904,
+                                lineNumber: 1082,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1005,7 +1187,7 @@ function EscrowUI() {
                                         children: formatRawAmount(escrow.account.amountMaker)
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 909,
+                                        lineNumber: 1087,
                                         columnNumber: 15
                                     }, this),
                                     takerJoined ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
@@ -1018,7 +1200,7 @@ function EscrowUI() {
                                                 children: formatRawAmount(escrow.account.amountTaker)
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 915,
+                                                lineNumber: 1093,
                                                 columnNumber: 19
                                             }, this)
                                         ]
@@ -1027,13 +1209,13 @@ function EscrowUI() {
                                         children: " and is waiting for a taker offer"
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 920,
+                                        lineNumber: 1098,
                                         columnNumber: 17
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 907,
+                                lineNumber: 1085,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1047,7 +1229,7 @@ function EscrowUI() {
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 924,
+                                        lineNumber: 1102,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1058,7 +1240,7 @@ function EscrowUI() {
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 927,
+                                        lineNumber: 1105,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1069,19 +1251,19 @@ function EscrowUI() {
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 930,
+                                        lineNumber: 1108,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 923,
+                                lineNumber: 1101,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                        lineNumber: 903,
+                        lineNumber: 1081,
                         columnNumber: 11
                     }, this),
                     mode === "maker" ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1096,14 +1278,14 @@ function EscrowUI() {
                                         className: "h-4 w-4"
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 947,
+                                        lineNumber: 1125,
                                         columnNumber: 17
                                     }, this),
                                     "Reject"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 938,
+                                lineNumber: 1116,
                                 columnNumber: 15
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1115,20 +1297,20 @@ function EscrowUI() {
                                         className: "h-4 w-4"
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 960,
+                                        lineNumber: 1138,
                                         columnNumber: 17
                                     }, this),
                                     "Execute"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 950,
+                                lineNumber: 1128,
                                 columnNumber: 15
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                        lineNumber: 937,
+                        lineNumber: 1115,
                         columnNumber: 13
                     }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
                         onClick: ()=>setSelectedEscrow(escrow),
@@ -1139,25 +1321,25 @@ function EscrowUI() {
                                 className: "h-4 w-4"
                             }, void 0, false, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 970,
+                                lineNumber: 1148,
                                 columnNumber: 15
                             }, this),
                             isSelected ? "Selected" : "Select"
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                        lineNumber: 965,
+                        lineNumber: 1143,
                         columnNumber: 13
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                lineNumber: 902,
+                lineNumber: 1080,
                 columnNumber: 9
             }, this)
         }, escrow.publicKey.toBase58(), false, {
             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-            lineNumber: 894,
+            lineNumber: 1072,
             columnNumber: 7
         }, this);
     };
@@ -1168,14 +1350,14 @@ function EscrowUI() {
                 className: "pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_58%_8%,rgba(124,58,237,0.30),transparent_27%),radial-gradient(circle_at_16%_22%,rgba(126,34,206,0.28),transparent_24%),radial-gradient(circle_at_86%_84%,rgba(37,99,235,0.14),transparent_24%),linear-gradient(180deg,#020412_0%,#06071c_45%,#020412_100%)]"
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                lineNumber: 981,
+                lineNumber: 1159,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "pointer-events-none absolute inset-0 opacity-35 [background-image:linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] [background-size:70px_70px]"
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                lineNumber: 982,
+                lineNumber: 1160,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1195,12 +1377,12 @@ function EscrowUI() {
                                                     className: "h-10 w-10 text-fuchsia-300"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                    lineNumber: 989,
+                                                    lineNumber: 1167,
                                                     columnNumber: 17
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 988,
+                                                lineNumber: 1166,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1210,7 +1392,7 @@ function EscrowUI() {
                                                         children: "Token Swap Launchpad"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 992,
+                                                        lineNumber: 1170,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1218,19 +1400,19 @@ function EscrowUI() {
                                                         children: "Launch classic SPL tokens, lock them in escrow, and swap peer to peer."
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 995,
+                                                        lineNumber: 1173,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 991,
+                                                lineNumber: 1169,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 987,
+                                        lineNumber: 1165,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1261,26 +1443,26 @@ function EscrowUI() {
                                                         className: "h-4 w-4"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1018,
+                                                        lineNumber: 1196,
                                                         columnNumber: 21
                                                     }, this),
                                                     item.label
                                                 ]
                                             }, item.key, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1009,
+                                                lineNumber: 1187,
                                                 columnNumber: 19
                                             }, this);
                                         })
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1001,
+                                        lineNumber: 1179,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 986,
+                                lineNumber: 1164,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("aside", {
@@ -1295,12 +1477,12 @@ function EscrowUI() {
                                                     className: "h-4 w-4"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                    lineNumber: 1029,
+                                                    lineNumber: 1207,
                                                     columnNumber: 17
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1028,
+                                                lineNumber: 1206,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
@@ -1308,13 +1490,13 @@ function EscrowUI() {
                                                 children: "Swap Summary"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1031,
+                                                lineNumber: 1209,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1027,
+                                        lineNumber: 1205,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1328,7 +1510,7 @@ function EscrowUI() {
                                                         children: "Wallet"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1036,
+                                                        lineNumber: 1214,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1336,13 +1518,13 @@ function EscrowUI() {
                                                         children: shortenKey(wallet.publicKey)
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1037,
+                                                        lineNumber: 1215,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1035,
+                                                lineNumber: 1213,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1353,7 +1535,7 @@ function EscrowUI() {
                                                         children: "Balance"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1042,
+                                                        lineNumber: 1220,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1364,13 +1546,13 @@ function EscrowUI() {
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1043,
+                                                        lineNumber: 1221,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1041,
+                                                lineNumber: 1219,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1381,7 +1563,7 @@ function EscrowUI() {
                                                         children: "Network"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1048,
+                                                        lineNumber: 1226,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1391,7 +1573,7 @@ function EscrowUI() {
                                                                 className: "h-4 w-4 text-cyan-300"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1050,
+                                                                lineNumber: 1228,
                                                                 columnNumber: 19
                                                             }, this),
                                                             "Solana ",
@@ -1399,13 +1581,13 @@ function EscrowUI() {
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1049,
+                                                        lineNumber: 1227,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1047,
+                                                lineNumber: 1225,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1416,7 +1598,7 @@ function EscrowUI() {
                                                         children: "Escrows"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1055,
+                                                        lineNumber: 1233,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1427,19 +1609,19 @@ function EscrowUI() {
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1056,
+                                                        lineNumber: 1234,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1054,
+                                                lineNumber: 1232,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1034,
+                                        lineNumber: 1212,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1451,26 +1633,26 @@ function EscrowUI() {
                                                 className: "h-4 w-4"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1065,
+                                                lineNumber: 1243,
                                                 columnNumber: 15
                                             }, this),
                                             "Refresh Escrows"
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1060,
+                                        lineNumber: 1238,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 1026,
+                                lineNumber: 1204,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                        lineNumber: 985,
+                        lineNumber: 1163,
                         columnNumber: 9
                     }, this),
                     (error || status) && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -1482,7 +1664,7 @@ function EscrowUI() {
                                     className: "h-5 w-5 shrink-0"
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 1075,
+                                    lineNumber: 1253,
                                     columnNumber: 17
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1490,13 +1672,13 @@ function EscrowUI() {
                                     children: error
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 1076,
+                                    lineNumber: 1254,
                                     columnNumber: 17
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 1074,
+                            lineNumber: 1252,
                             columnNumber: 15
                         }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                             className: "flex items-center gap-3 rounded-lg border border-violet-300/25 bg-violet-500/10 p-4 text-violet-100",
@@ -1505,7 +1687,7 @@ function EscrowUI() {
                                     className: "h-5 w-5 animate-spin"
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 1080,
+                                    lineNumber: 1258,
                                     columnNumber: 17
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1513,18 +1695,18 @@ function EscrowUI() {
                                     children: status
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 1081,
+                                    lineNumber: 1259,
                                     columnNumber: 17
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 1079,
+                            lineNumber: 1257,
                             columnNumber: 15
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                        lineNumber: 1072,
+                        lineNumber: 1250,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -1547,7 +1729,7 @@ function EscrowUI() {
                                                                 children: "2"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1095,
+                                                                lineNumber: 1273,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1557,7 +1739,7 @@ function EscrowUI() {
                                                                         children: "Create Escrow Terms"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1099,
+                                                                        lineNumber: 1277,
                                                                         columnNumber: 23
                                                                     }, this),
                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1565,19 +1747,19 @@ function EscrowUI() {
                                                                         children: "Initialize with your token only. Takers choose their token when they join."
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1100,
+                                                                        lineNumber: 1278,
                                                                         columnNumber: 23
                                                                     }, this)
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1098,
+                                                                lineNumber: 1276,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1094,
+                                                        lineNumber: 1272,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1595,13 +1777,13 @@ function EscrowUI() {
                                                                         className: "min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm text-white outline-none focus:border-violet-300/60"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1109,
+                                                                        lineNumber: 1287,
                                                                         columnNumber: 23
                                                                     }, this)
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1107,
+                                                                lineNumber: 1285,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -1616,19 +1798,19 @@ function EscrowUI() {
                                                                         className: "min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm text-white outline-none focus:border-violet-300/60"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1119,
+                                                                        lineNumber: 1297,
                                                                         columnNumber: 23
                                                                     }, this)
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1117,
+                                                                lineNumber: 1295,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1106,
+                                                        lineNumber: 1284,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1643,14 +1825,14 @@ function EscrowUI() {
                                                                         className: "h-4 w-4"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1139,
+                                                                        lineNumber: 1317,
                                                                         columnNumber: 23
                                                                     }, this),
                                                                     "Initialize Escrow"
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1130,
+                                                                lineNumber: 1308,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1662,26 +1844,26 @@ function EscrowUI() {
                                                                         className: "h-4 w-4"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1147,
+                                                                        lineNumber: 1325,
                                                                         columnNumber: 23
                                                                     }, this),
                                                                     "Deposit Maker Tokens"
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1142,
+                                                                lineNumber: 1320,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1129,
+                                                        lineNumber: 1307,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1093,
+                                                lineNumber: 1271,
                                                 columnNumber: 17
                                             }, this)
                                         ]
@@ -1700,7 +1882,7 @@ function EscrowUI() {
                                                                 children: "2"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1161,
+                                                                lineNumber: 1339,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1710,7 +1892,7 @@ function EscrowUI() {
                                                                         children: "Join an Escrow"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1165,
+                                                                        lineNumber: 1343,
                                                                         columnNumber: 23
                                                                     }, this),
                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1718,19 +1900,19 @@ function EscrowUI() {
                                                                         children: "Select a maker escrow, choose your token, and propose your amount."
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1166,
+                                                                        lineNumber: 1344,
                                                                         columnNumber: 23
                                                                     }, this)
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1164,
+                                                                lineNumber: 1342,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1160,
+                                                        lineNumber: 1338,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1740,12 +1922,12 @@ function EscrowUI() {
                                                             children: "No joinable escrows found."
                                                         }, void 0, false, {
                                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                            lineNumber: 1174,
+                                                            lineNumber: 1352,
                                                             columnNumber: 23
                                                         }, this) : joinableEscrows.map((escrow)=>renderEscrowCard(escrow, "taker"))
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1172,
+                                                        lineNumber: 1350,
                                                         columnNumber: 19
                                                     }, this),
                                                     selectedEscrow && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1756,7 +1938,7 @@ function EscrowUI() {
                                                                 children: "Your Offer"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1184,
+                                                                lineNumber: 1362,
                                                                 columnNumber: 23
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1764,7 +1946,7 @@ function EscrowUI() {
                                                                 children: "The maker will review your token mint and amount before executing."
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1185,
+                                                                lineNumber: 1363,
                                                                 columnNumber: 23
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -1779,13 +1961,13 @@ function EscrowUI() {
                                                                         className: "min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm text-white outline-none focus:border-violet-300/60"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1190,
+                                                                        lineNumber: 1368,
                                                                         columnNumber: 25
                                                                     }, this)
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1188,
+                                                                lineNumber: 1366,
                                                                 columnNumber: 23
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1797,26 +1979,26 @@ function EscrowUI() {
                                                                         className: "h-4 w-4"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1207,
+                                                                        lineNumber: 1385,
                                                                         columnNumber: 25
                                                                     }, this),
                                                                     "Deposit Taker Tokens"
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1198,
+                                                                lineNumber: 1376,
                                                                 columnNumber: 23
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1183,
+                                                        lineNumber: 1361,
                                                         columnNumber: 21
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1159,
+                                                lineNumber: 1337,
                                                 columnNumber: 17
                                             }, this)
                                         ]
@@ -1834,7 +2016,7 @@ function EscrowUI() {
                                                                 children: "Your Maker Escrows"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1220,
+                                                                lineNumber: 1398,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1842,13 +2024,13 @@ function EscrowUI() {
                                                                 children: "Review taker offers, then execute or reject them."
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1221,
+                                                                lineNumber: 1399,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1219,
+                                                        lineNumber: 1397,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1859,13 +2041,13 @@ function EscrowUI() {
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1225,
+                                                        lineNumber: 1403,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1218,
+                                                lineNumber: 1396,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1875,24 +2057,24 @@ function EscrowUI() {
                                                     children: "No escrows created by this wallet yet."
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                    lineNumber: 1232,
+                                                    lineNumber: 1410,
                                                     columnNumber: 21
                                                 }, this) : makerEscrows.map((escrow)=>renderEscrowCard(escrow, "maker"))
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1230,
+                                                lineNumber: 1408,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1217,
+                                        lineNumber: 1395,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 1088,
+                                lineNumber: 1266,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("aside", {
@@ -1906,7 +2088,7 @@ function EscrowUI() {
                                                 children: "Flow"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1245,
+                                                lineNumber: 1423,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1925,7 +2107,7 @@ function EscrowUI() {
                                                                 children: index + 1
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1255,
+                                                                lineNumber: 1433,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1933,24 +2115,24 @@ function EscrowUI() {
                                                                 children: step
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1258,
+                                                                lineNumber: 1436,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, step, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1254,
+                                                        lineNumber: 1432,
                                                         columnNumber: 19
                                                     }, this))
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1246,
+                                                lineNumber: 1424,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1244,
+                                        lineNumber: 1422,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1961,7 +2143,7 @@ function EscrowUI() {
                                                 children: "Contract Notes"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1265,
+                                                lineNumber: 1443,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1974,14 +2156,14 @@ function EscrowUI() {
                                                                 className: "mt-0.5 h-5 w-5 shrink-0 text-violet-300"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1268,
+                                                                lineNumber: 1446,
                                                                 columnNumber: 19
                                                             }, this),
                                                             "The current IDL uses the classic SPL Token program, so this launchpad creates Tokenkeg mints."
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1267,
+                                                        lineNumber: 1445,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1991,14 +2173,14 @@ function EscrowUI() {
                                                                 className: "mt-0.5 h-5 w-5 shrink-0 text-violet-300"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1272,
+                                                                lineNumber: 1450,
                                                                 columnNumber: 19
                                                             }, this),
                                                             "Image and JSON metadata are uploaded to Pinata, but this contract does not store metadata on-chain."
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1271,
+                                                        lineNumber: 1449,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2008,54 +2190,54 @@ function EscrowUI() {
                                                                 className: "mt-0.5 h-5 w-5 shrink-0 text-violet-300"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1276,
+                                                                lineNumber: 1454,
                                                                 columnNumber: 19
                                                             }, this),
                                                             "Amounts use 9 decimals and are converted to raw token units before Anchor calls."
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1275,
+                                                        lineNumber: 1453,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1266,
+                                                lineNumber: 1444,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1264,
+                                        lineNumber: 1442,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 1243,
+                                lineNumber: 1421,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                        lineNumber: 1087,
+                        lineNumber: 1265,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                lineNumber: 984,
+                lineNumber: 1162,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-        lineNumber: 980,
+        lineNumber: 1158,
         columnNumber: 5
     }, this);
 }
-_s(EscrowUI, "8hlrgF0vcFT6axZ2qHo3KRApSbg=", false, function() {
+_s(EscrowUI, "1k4AcR5HuhhFRUkysIJ3NbdBsZU=", false, function() {
     return [
         __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$wallet$2d$adapter$2d$react$2f$lib$2f$esm$2f$useConnection$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useConnection"],
         __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$wallet$2d$adapter$2d$react$2f$lib$2f$esm$2f$useWallet$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useWallet"]

@@ -942,6 +942,10 @@
     height: 100%;
   }
 
+  .max-h-64 {
+    max-height: calc(var(--spacing) * 64);
+  }
+
   .min-h-11 {
     min-height: calc(var(--spacing) * 11);
   }
@@ -1316,6 +1320,10 @@
 
   .overflow-x-auto {
     overflow-x: auto;
+  }
+
+  .overflow-y-auto {
+    overflow-y: auto;
   }
 
   .\!rounded-lg {
@@ -2827,6 +2835,10 @@
     padding-top: calc(var(--spacing) * 10);
   }
 
+  .pr-1 {
+    padding-right: calc(var(--spacing) * 1);
+  }
+
   .pr-12 {
     padding-right: calc(var(--spacing) * 12);
   }
@@ -2927,6 +2939,10 @@
 
   .text-\[0\.68rem\] {
     font-size: .68rem;
+  }
+
+  .text-\[11px\] {
+    font-size: 11px;
   }
 
   .text-\[clamp\(0\.6rem\,1\.5vw\,1\.25rem\)\] {
@@ -3105,6 +3121,10 @@
 
   .text-sky-950 {
     color: var(--color-sky-950);
+  }
+
+  .text-slate-100 {
+    color: var(--color-slate-100);
   }
 
   .text-slate-200 {
@@ -3779,6 +3799,12 @@
   @media (min-width: 40rem) {
     .sm\:grid-cols-3 {
       grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 40rem) {
+    .sm\:grid-cols-\[1fr_auto\] {
+      grid-template-columns: 1fr auto;
     }
   }
 
