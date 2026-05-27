@@ -1,29 +1,63 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-
+import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
+import { createNoopSigner } from "@metaplex-foundation/umi";
 import {
-  TOKEN_PROGRAM_ID,
+  createMetadataAccountV3,
+  mplTokenMetadata,
+} from "@metaplex-foundation/mpl-token-metadata";
+import {
+  fromWeb3JsPublicKey,
+  toWeb3JsInstruction,
+} from "@metaplex-foundation/umi-web3js-adapters";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
-  getAssociatedTokenAddress,
-  createMintToInstruction,
   createInitializeMintInstruction,
+  createMintToInstruction,
+  getAssociatedTokenAddress,
   getMinimumBalanceForRentExemptMint,
   MINT_SIZE,
-  ASSOCIATED_TOKEN_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
-
+import {
+  Check,
+  CheckCircle2,
+  Copy,
+  ExternalLink,
+  Eye,
+  FileText,
+  Handshake,
+  Image as ImageIcon,
+  Loader2,
+  LockKeyhole,
+  Rocket,
+  ShieldCheck,
+  Sparkles,
+  Upload,
+  WalletCards,
+  X,
+  Zap,
+} from "lucide-react";
 import {
   Keypair,
+  LAMPORTS_PER_SOL,
   PublicKey,
   SystemProgram,
   Transaction,
 } from "@solana/web3.js";
 
 import idl from "../idl/idlswap/escrow_application.json";
+
+const DECIMALS = 9;
+const EXPLORER_CLUSTER = "devnet";
+const ZERO_PUBKEY = "11111111111111111111111111111111";
+const MAX_METADATA_NAME_LENGTH = 32;
+const MAX_METADATA_SYMBOL_LENGTH = 10;
 
 type EscrowAccount = {
   publicKey: PublicKey;
@@ -37,46 +71,199 @@ type EscrowAccount = {
     depositMaker: boolean;
     depositTaker: boolean;
     bump: number;
-    escrowId: anchor.BN;  // ← Added this field
+    escrowId: anchor.BN;
   };
 };
 
+type EscrowAccountClient = {
+  all: () => Promise<EscrowAccount[]>;
+};
+
+type TokenForm = {
+  name: string;
+  symbol: string;
+  description: string;
+  amount: string;
+  existingMintInput: string;
+  imageFile: File | null;
+  imagePreview: string;
+  mintAddress: string;
+  metadataUri: string;
+  txSig: string;
+};
+
+type LaunchSide = "maker" | "taker";
+
+const emptyTokenForm: TokenForm = {
+  name: "",
+  symbol: "",
+  description: "",
+  amount: "",
+  existingMintInput: "",
+  imageFile: null,
+  imagePreview: "",
+  mintAddress: "",
+  metadataUri: "",
+  txSig: "",
+};
+
+const uploadFileToPinata = async (file: File, pinataJwt: string) => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${pinataJwt}` },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Pinata image upload failed: ${response.statusText}`);
+  }
+
+  const data = (await response.json()) as { IpfsHash: string };
+  return `https://gateway.pinata.cloud/ipfs/${data.IpfsHash}`;
+};
+
+const uploadJsonToPinata = async (
+  json: Record<string, unknown>,
+  pinataJwt: string
+) => {
+  const response = await fetch("https://api.pinata.cloud/pinning/pinJSONToIPFS", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${pinataJwt}`,
+    },
+    body: JSON.stringify({ pinataContent: json }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Pinata metadata upload failed: ${response.statusText}`);
+  }
+
+  const data = (await response.json()) as { IpfsHash: string };
+  return `https://gateway.pinata.cloud/ipfs/${data.IpfsHash}`;
+};
+
+const shortenKey = (key?: PublicKey | string | null) => {
+  if (!key) return "Not connected";
+  const value = typeof key === "string" ? key : key.toBase58();
+  return `${value.slice(0, 5)}...${value.slice(-5)}`;
+};
+
+const explorerUrl = (path: "address" | "tx", value: string) =>
+  `https://explorer.solana.com/${path}/${value}?cluster=${EXPLORER_CLUSTER}`;
+
+const toRawAmount = (value: string, decimals = DECIMALS) => {
+  const normalized = value.trim();
+  if (!normalized || Number(normalized) <= 0) {
+    throw new Error("Amount must be greater than 0");
+  }
+
+  const [whole, fraction = ""] = normalized.split(".");
+  if (fraction.length > decimals) {
+    throw new Error(`Use at most ${decimals} decimal places`);
+  }
+
+  const paddedFraction = fraction.padEnd(decimals, "0");
+  return new anchor.BN(`${whole || "0"}${paddedFraction}`);
+};
+
+const formatRawAmount = (amount: anchor.BN, decimals = DECIMALS) => {
+  const raw = amount.toString().padStart(decimals + 1, "0");
+  const whole = raw.slice(0, -decimals);
+  const fraction = raw.slice(-decimals).replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole;
+};
+
+const getEscrowPda = (
+  maker: PublicKey,
+  mintMaker: PublicKey,
+  escrowId: anchor.BN,
+  programId: PublicKey
+) =>
+  PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("escrow"),
+      maker.toBuffer(),
+      mintMaker.toBuffer(),
+      escrowId.toArrayLike(Buffer, "le", 8),
+    ],
+    programId
+  )[0];
+
 export default function EscrowUI() {
-  // ---------------- Wallet & Connection ----------------
   const { connection } = useConnection();
   const wallet = useWallet();
+  const pinataJwt = process.env.NEXT_PUBLIC_PINATA_JWT;
 
-  // ---------------- State ----------------
-  const [escrows, setEscrows] = useState<EscrowAccount[]>([]);
-  const [selectedEscrow, setSelectedEscrow] = useState<EscrowAccount | null>(null);
+  const [activeTab, setActiveTab] = useState<"maker" | "taker" | "escrows">(
+    "maker"
+  );
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<"maker" | "taker">("maker");
-
-  // Maker state
-  const [makerMintKeypair, setMakerMintKeypair] = useState<Keypair | null>(null);
-  const [takerMintInput, setTakerMintInput] = useState("");
-  const [makerAmount, setMakerAmount] = useState("100");
-  const [takerAmount, setTakerAmount] = useState("100");
-  const [escrowId, setEscrowId] = useState("1");  // ← Added escrow ID
-  const [escrowCreated, setEscrowCreated] = useState(false);
-
-  // Taker state
-  const [takerMintKeypair, setTakerMintKeypair] = useState<Keypair | null>(null);
-  const [mintAmount, setMintAmount] = useState("1000");
-
-  // ---------------- Anchor Setup ----------------
-  const provider = new anchor.AnchorProvider(
-    connection,
-    wallet as any,
-    { commitment: "processed" }
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  const [solBalance, setSolBalance] = useState<number | null>(null);
+  const [escrows, setEscrows] = useState<EscrowAccount[]>([]);
+  const [selectedEscrow, setSelectedEscrow] = useState<EscrowAccount | null>(
+    null
   );
 
-  const program = new Program(idl as anchor.Idl, provider);
+  const [makerToken, setMakerToken] = useState<TokenForm>({
+    ...emptyTokenForm,
+    name: "Maker Token",
+    symbol: "MAKER",
+    amount: "1000",
+  });
+  const [takerToken, setTakerToken] = useState<TokenForm>({
+    ...emptyTokenForm,
+    name: "Taker Token",
+    symbol: "TAKER",
+    amount: "1000",
+  });
+  const [escrowId, setEscrowId] = useState("1");
+  const [makerAmount, setMakerAmount] = useState("100");
+  const [takerAmount, setTakerAmount] = useState("100");
+  const [createdEscrow, setCreatedEscrow] = useState<PublicKey | null>(null);
 
-  // ---------------- Load Escrows ----------------
+  const provider = useMemo(
+    () =>
+      new anchor.AnchorProvider(connection, wallet as unknown as anchor.Wallet, {
+        commitment: "processed",
+      }),
+    [connection, wallet]
+  );
+
+  const program = useMemo(
+    () => new Program(idl as anchor.Idl, provider),
+    [provider]
+  );
+  const umi = useMemo(
+    () => createUmi(connection).use(mplTokenMetadata()),
+    [connection]
+  );
+
+  const escrowClient = program.account as unknown as {
+    escrow: EscrowAccountClient;
+  };
+
+  const makerEscrows = wallet.publicKey
+    ? escrows.filter((escrow) => escrow.account.maker.equals(wallet.publicKey!))
+    : [];
+  const joinableEscrows = escrows.filter(
+    (escrow) =>
+      escrow.account.depositMaker &&
+      !escrow.account.depositTaker &&
+      !escrow.account.maker.equals(wallet.publicKey ?? PublicKey.default)
+  );
+  const activeEscrowCount = escrows.filter(
+    (escrow) => !escrow.account.depositMaker || !escrow.account.depositTaker
+  ).length;
+
   const fetchEscrows = async () => {
     try {
-      const accounts = await (program.account as any).escrow.all();
+      const accounts = await escrowClient.escrow.all();
       setEscrows(accounts);
     } catch (err) {
       console.error("Fetch escrow error:", err);
@@ -84,175 +271,235 @@ export default function EscrowUI() {
   };
 
   useEffect(() => {
-    if (wallet.publicKey) {
-      fetchEscrows();
+    if (!wallet.publicKey) {
+      setSolBalance(null);
+      setEscrows([]);
+      return;
     }
+
+    fetchEscrows();
+    connection
+      .getBalance(wallet.publicKey)
+      .then((lamports) => setSolBalance(lamports / LAMPORTS_PER_SOL))
+      .catch(() => setSolBalance(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wallet.publicKey]);
+  }, [connection, wallet.publicKey]);
 
-  // ============================================
-  // MAKER SIDE FUNCTIONS
-  // ============================================
+  const updateToken = (side: LaunchSide, patch: Partial<TokenForm>) => {
+    if (side === "maker") {
+      setMakerToken((current) => ({ ...current, ...patch }));
+      return;
+    }
 
-  // STEP 1: Create Maker Mint
-  const createMakerMint = async () => {
+    setTakerToken((current) => ({ ...current, ...patch }));
+  };
+
+  const handleImageChange =
+    (side: LaunchSide) => (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        updateToken(side, {
+          imageFile: file,
+          imagePreview: reader.result as string,
+        });
+      };
+      reader.readAsDataURL(file);
+    };
+
+  const clearImage = (side: LaunchSide) =>
+    updateToken(side, { imageFile: null, imagePreview: "" });
+
+  const copyText = async (value: string) => {
+    await navigator.clipboard.writeText(value);
+  };
+
+  const selectExistingMint = (side: LaunchSide) => {
+    const token = side === "maker" ? makerToken : takerToken;
+
     try {
-      setLoading(true);
-      if (!wallet.publicKey) return;
+      const mint = new PublicKey(token.existingMintInput.trim());
+      updateToken(side, { mintAddress: mint.toBase58() });
+    } catch {
+      setError("Enter a valid SPL token mint address");
+    }
+  };
 
-      const makerMint = Keypair.generate();
+  const runAction = async (label: string, action: () => Promise<void>) => {
+    setLoading(true);
+    setStatus(label);
+    setError("");
+
+    try {
+      await action();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Transaction failed";
+      console.error(err);
+      setError(message);
+    } finally {
+      setLoading(false);
+      setStatus("");
+    }
+  };
+
+  const launchToken = async (side: LaunchSide) => {
+    await runAction(`Launching ${side} token...`, async () => {
+      if (!wallet.publicKey) throw new Error("Connect your wallet first");
+      if (!pinataJwt) throw new Error("NEXT_PUBLIC_PINATA_JWT is missing");
+
+      const token = side === "maker" ? makerToken : takerToken;
+      if (!token.name || !token.symbol || !token.amount || !token.imageFile) {
+        throw new Error("Fill token name, symbol, supply, and image");
+      }
+
+      const balance = await connection.getBalance(wallet.publicKey);
+      if (balance < 0.03 * LAMPORTS_PER_SOL) {
+        throw new Error("Not enough SOL for mint rent and transaction fees");
+      }
+
+      setStatus("Uploading token image to IPFS...");
+      const imageUrl = await uploadFileToPinata(token.imageFile, pinataJwt);
+
+      setStatus("Uploading token metadata to IPFS...");
+      const metadataUri = await uploadJsonToPinata(
+        {
+          name: token.name,
+          symbol: token.symbol,
+          description:
+            token.description ||
+            `${token.name} (${token.symbol}) launched for escrow swapping`,
+          image: imageUrl,
+          attributes: [],
+          properties: {
+            files: [{ uri: imageUrl, type: token.imageFile.type }],
+            category: "fungible",
+          },
+        },
+        pinataJwt
+      );
+
+      setStatus("Creating SPL token mint...");
+      const mintKeypair = Keypair.generate();
       const rent = await getMinimumBalanceForRentExemptMint(connection);
+      const mint = mintKeypair.publicKey;
+      const ata = await getAssociatedTokenAddress(mint, wallet.publicKey);
+      const rawAmount = BigInt(toRawAmount(token.amount).toString());
+      const payer = createNoopSigner(fromWeb3JsPublicKey(wallet.publicKey));
+      const metadataInstructions = createMetadataAccountV3(umi, {
+        mint: fromWeb3JsPublicKey(mint),
+        mintAuthority: payer,
+        payer,
+        updateAuthority: payer,
+        data: {
+          name: token.name.trim().slice(0, MAX_METADATA_NAME_LENGTH),
+          symbol: token.symbol.trim().slice(0, MAX_METADATA_SYMBOL_LENGTH),
+          uri: metadataUri,
+          sellerFeeBasisPoints: 0,
+          creators: null,
+          collection: null,
+          uses: null,
+        },
+        isMutable: true,
+        collectionDetails: null,
+      })
+        .getInstructions()
+        .map(toWeb3JsInstruction);
 
-      const txMint = new Transaction().add(
+      const tx = new Transaction().add(
         SystemProgram.createAccount({
           fromPubkey: wallet.publicKey,
-          newAccountPubkey: makerMint.publicKey,
+          newAccountPubkey: mint,
           space: MINT_SIZE,
           lamports: rent,
           programId: TOKEN_PROGRAM_ID,
         }),
         createInitializeMintInstruction(
-          makerMint.publicKey,
-          6,
+          mint,
+          DECIMALS,
           wallet.publicKey,
-          wallet.publicKey
-        )
-      );
-
-      const signature = await wallet.sendTransaction(txMint, connection, {
-        signers: [makerMint],
-      });
-      
-      await connection.confirmTransaction(signature, 'confirmed');
-
-      setMakerMintKeypair(makerMint);
-
-      alert(
-        `✅ Maker Mint Created!\n\n` +
-        `Mint Address: ${makerMint.publicKey.toBase58()}\n\n` +
-        `Next: Mint tokens to yourself (Step 2)`
-      );
-    } catch (err) {
-      console.error(err);
-      alert("❌ Mint creation failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // STEP 2: Mint Tokens to Maker
-  const mintTokensToMaker = async () => {
-    try {
-      setLoading(true);
-      if (!wallet.publicKey || !makerMintKeypair) return;
-
-      const makerAta = await getAssociatedTokenAddress(
-        makerMintKeypair.publicKey,
-        wallet.publicKey
-      );
-
-      const txAta = new Transaction().add(
+          wallet.publicKey,
+          TOKEN_PROGRAM_ID
+        ),
         createAssociatedTokenAccountInstruction(
           wallet.publicKey,
-          makerAta,
+          ata,
           wallet.publicKey,
-          makerMintKeypair.publicKey
+          mint,
+          TOKEN_PROGRAM_ID
         ),
         createMintToInstruction(
-          makerMintKeypair.publicKey,
-          makerAta,
+          mint,
+          ata,
           wallet.publicKey,
-          100_000_000 // 100 tokens with 6 decimals
-        )
+          rawAmount,
+          [],
+          TOKEN_PROGRAM_ID
+        ),
+        ...metadataInstructions
       );
 
-      const signature = await wallet.sendTransaction(txAta, connection);
-      await connection.confirmTransaction(signature, 'confirmed');
-      
-      alert("✅ Successfully minted 100 tokens to your wallet!");
-    } catch (err) {
-      console.error(err);
-      alert("❌ Minting failed");
-    } finally {
-      setLoading(false);
-    }
+      const signature = await wallet.sendTransaction(tx, connection, {
+        signers: [mintKeypair],
+      });
+      const latest = await connection.getLatestBlockhash();
+      await connection.confirmTransaction(
+        { signature, ...latest },
+        "confirmed"
+      );
+
+      updateToken(side, {
+        mintAddress: mint.toBase58(),
+        metadataUri,
+        txSig: signature,
+      });
+
+      await fetchEscrows();
+    });
   };
 
-  // STEP 3: Initialize Escrow
   const initializeEscrow = async () => {
-    try {
-      setLoading(true);
-      if (!wallet.publicKey || !makerMintKeypair || !takerMintInput) return;
+    await runAction("Creating escrow...", async () => {
+      if (!wallet.publicKey) throw new Error("Connect your wallet first");
+      if (!makerToken.mintAddress) throw new Error("Launch maker token first");
 
-      const takerMintPubkey = new PublicKey(takerMintInput);
-      const escrowIdNum = new anchor.BN(escrowId);
-
-      // ✅ CORRECTED: Derive PDA with all 4 seeds including escrow_id
-      const [escrowPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("escrow"),
-          wallet.publicKey.toBuffer(),
-          makerMintKeypair.publicKey.toBuffer(),
-          escrowIdNum.toArrayLike(Buffer, "le", 8),  // ← FIXED: Added escrow_id
-        ],
+      const makerMint = new PublicKey(makerToken.mintAddress);
+      const escrowIdBn = new anchor.BN(escrowId || "0");
+      const escrowPda = getEscrowPda(
+        wallet.publicKey,
+        makerMint,
+        escrowIdBn,
         program.programId
       );
 
-      console.log("Initializing escrow with PDA:", escrowPda.toBase58());
-
       await program.methods
-        .inizialiseEscrow(
-          escrowIdNum,  // ← FIXED: Pass escrow_id as first parameter
-          new anchor.BN(Number(makerAmount) * 1_000_000),
-          new anchor.BN(Number(takerAmount) * 1_000_000)
-        )
+        .inizialiseEscrow(escrowIdBn, toRawAmount(makerAmount))
         .accounts({
           escrow: escrowPda,
           maker: wallet.publicKey,
-          taker: wallet.publicKey,
-          mintMaker: makerMintKeypair.publicKey,
-          mintTaker: takerMintPubkey,
+          mintMaker: makerMint,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
 
-      setEscrowCreated(true);
-      alert("✅ Escrow initialized successfully!");
+      setCreatedEscrow(escrowPda);
       await fetchEscrows();
-    } catch (err) {
-      console.error(err);
-      alert("❌ Escrow initialization failed. Check the taker mint address!");
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
-  // STEP 4: Deposit Maker Tokens
   const depositMakerTokens = async () => {
-    try {
-      setLoading(true);
-      if (!wallet.publicKey || !makerMintKeypair) return;
+    await runAction("Depositing maker tokens...", async () => {
+      if (!wallet.publicKey) throw new Error("Connect your wallet first");
+      if (!makerToken.mintAddress) throw new Error("Launch maker token first");
 
-      const escrowIdNum = new anchor.BN(escrowId);
-
-      // ✅ CORRECTED: Derive PDA with all 4 seeds
-      const [escrowPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("escrow"),
-          wallet.publicKey.toBuffer(),
-          makerMintKeypair.publicKey.toBuffer(),
-          escrowIdNum.toArrayLike(Buffer, "le", 8),  // ← FIXED: Added escrow_id
-        ],
-        program.programId
-      );
-
-      const makerAta = await getAssociatedTokenAddress(
-        makerMintKeypair.publicKey,
-        wallet.publicKey
-      );
-
+      const makerMint = new PublicKey(makerToken.mintAddress);
+      const escrowIdBn = new anchor.BN(escrowId || "0");
+      const escrowPda =
+        createdEscrow ?? getEscrowPda(wallet.publicKey, makerMint, escrowIdBn, program.programId);
+      const makerAta = await getAssociatedTokenAddress(makerMint, wallet.publicKey);
       const escrowMakeAta = await getAssociatedTokenAddress(
-        makerMintKeypair.publicKey,
+        makerMint,
         escrowPda,
         true
       );
@@ -262,133 +509,35 @@ export default function EscrowUI() {
         .accounts({
           escrow: escrowPda,
           maker: wallet.publicKey,
-          mintAta: makerAta,
-          escrowMakeAta: escrowMakeAta,
-          mintMaker: makerMintKeypair.publicKey,
+          makerAta,
+          escrowMakerAta: escrowMakeAta,
+          mintMaker: makerMint,
           tokenProgram: TOKEN_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
 
-      alert("✅ Maker tokens deposited!\n\nEscrow is ready. Now wait for the taker to deposit.");
       await fetchEscrows();
-    } catch (err) {
-      console.error(err);
-      alert("❌ Deposit failed");
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
-  // ============================================
-  // TAKER SIDE FUNCTIONS
-  // ============================================
-
-  // STEP 1: Create Taker Mint
-  const createTakerMint = async () => {
-    try {
-      setLoading(true);
-      if (!wallet.publicKey) return;
-
-      const takerMint = Keypair.generate();
-      const rent = await getMinimumBalanceForRentExemptMint(connection);
-
-      const txMint = new Transaction().add(
-        SystemProgram.createAccount({
-          fromPubkey: wallet.publicKey,
-          newAccountPubkey: takerMint.publicKey,
-          space: MINT_SIZE,
-          lamports: rent,
-          programId: TOKEN_PROGRAM_ID,
-        }),
-        createInitializeMintInstruction(
-          takerMint.publicKey,
-          6,
-          wallet.publicKey,
-          wallet.publicKey
-        )
-      );
-
-      const signature = await wallet.sendTransaction(txMint, connection, {
-        signers: [takerMint],
-      });
-      
-      await connection.confirmTransaction(signature, 'confirmed');
-
-      setTakerMintKeypair(takerMint);
-
-      alert(
-        `✅ Taker Mint Created!\n\n` +
-        `Mint Address: ${takerMint.publicKey.toBase58()}\n\n` +
-        `⚠️ IMPORTANT: Share this address with the maker!\n` +
-        `They need it to create the escrow.`
-      );
-    } catch (err) {
-      console.error(err);
-      alert("❌ Mint creation failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // STEP 2: Mint Tokens to Taker
-  const mintTokensToTaker = async () => {
-    try {
-      setLoading(true);
-      if (!wallet.publicKey || !takerMintKeypair) return;
-
-      const takerAta = await getAssociatedTokenAddress(
-        takerMintKeypair.publicKey,
-        wallet.publicKey
-      );
-
-      const ataExists = await connection.getAccountInfo(takerAta);
-      const tx = new Transaction();
-      
-      if (!ataExists) {
-        tx.add(
-          createAssociatedTokenAccountInstruction(
-            wallet.publicKey,
-            takerAta,
-            wallet.publicKey,
-            takerMintKeypair.publicKey
-          )
-        );
+  const depositTakerTokens = async () => {
+    await runAction("Depositing taker tokens...", async () => {
+      if (!wallet.publicKey) throw new Error("Connect your wallet first");
+      if (!selectedEscrow) throw new Error("Select an escrow first");
+      if (!takerToken.mintAddress) {
+        throw new Error("Launch or paste the taker token mint first");
       }
 
-      tx.add(
-        createMintToInstruction(
-          takerMintKeypair.publicKey,
-          takerAta,
-          wallet.publicKey,
-          Number(mintAmount) * 1_000_000
-        )
-      );
-
-      const signature = await wallet.sendTransaction(tx, connection);
-      await connection.confirmTransaction(signature, 'confirmed');
-      
-      alert(`✅ Successfully minted ${mintAmount} tokens to your wallet!`);
-    } catch (err) {
-      console.error(err);
-      alert("❌ Minting failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // STEP 3: Deposit Taker Tokens
-  const depositTakerTokens = async () => {
-    try {
-      setLoading(true);
-      if (!wallet.publicKey || !selectedEscrow) return;
-
       const escrow = selectedEscrow.publicKey;
-      const takerMint = selectedEscrow.account.mintTaker;
-
+      const takerMint = new PublicKey(takerToken.mintAddress);
       const payAta = await getAssociatedTokenAddress(takerMint, wallet.publicKey);
-      
+      const payAtaAccount = await connection.getAccountInfo(payAta);
+      if (!payAtaAccount) {
+        throw new Error("Your wallet does not have a token account for this taker mint");
+      }
+
       const escrowTakerAta = await getAssociatedTokenAddress(
         takerMint,
         escrow,
@@ -396,1105 +545,742 @@ export default function EscrowUI() {
       );
 
       await program.methods
-        .depositTaker()
+        .takeEscrow(toRawAmount(takerAmount))
         .accounts({
           escrow,
           taker: wallet.publicKey,
-          mintTakerAta: payAta,
-          escrowTakerAta: escrowTakerAta,
           mintTaker: takerMint,
+          takerAta: payAta,
+          escrowTakerAta,
           tokenProgram: TOKEN_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
 
-      alert("✅ Taker tokens deposited!\n\nNow wait for the maker to execute the swap.");
       await fetchEscrows();
-    } catch (err) {
-      console.error(err);
-      alert("❌ Deposit failed. Make sure you have enough tokens!");
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
-  // STEP 4: Execute Swap (Maker only)
-  const executeSwap = async () => {
-    try {
-      setLoading(true);
-      if (!wallet.publicKey || !selectedEscrow) return;
+  const executeSwap = async (escrowToExecute: EscrowAccount) => {
+    await runAction("Executing escrow swap...", async () => {
+      if (!wallet.publicKey) throw new Error("Connect your wallet first");
 
-      const escrow = selectedEscrow.publicKey;
-      const data = selectedEscrow.account;
+      const escrow = escrowToExecute.publicKey;
+      const data = escrowToExecute.account;
+      if (data.taker.toBase58() === ZERO_PUBKEY) {
+        throw new Error("Taker has not joined this escrow yet");
+      }
 
-      const makerMint = data.mintMaker;
-      const takerMint = data.mintTaker;
+      const makerReceiveAta = await getAssociatedTokenAddress(
+        data.mintTaker,
+        data.maker
+      );
+      const takerReceiveAta = await getAssociatedTokenAddress(
+        data.mintMaker,
+        data.taker
+      );
 
-      // Get the ATAs we need
-      const makerReceiveAta = await getAssociatedTokenAddress(takerMint, data.maker);
-      const takerReceiveAta = await getAssociatedTokenAddress(makerMint, data.taker);
-
-      // Create ATAs if needed
-      const txAta = new Transaction();
-
+      const setupTx = new Transaction();
       const makerReceiveExists = await connection.getAccountInfo(makerReceiveAta);
       if (!makerReceiveExists) {
-        txAta.add(
+        setupTx.add(
           createAssociatedTokenAccountInstruction(
             wallet.publicKey,
             makerReceiveAta,
             data.maker,
-            takerMint
+            data.mintTaker,
+            TOKEN_PROGRAM_ID
           )
         );
       }
 
       const takerReceiveExists = await connection.getAccountInfo(takerReceiveAta);
       if (!takerReceiveExists) {
-        txAta.add(
+        setupTx.add(
           createAssociatedTokenAccountInstruction(
             wallet.publicKey,
             takerReceiveAta,
             data.taker,
-            makerMint
+            data.mintMaker,
+            TOKEN_PROGRAM_ID
           )
         );
       }
 
-      if (txAta.instructions.length > 0) {
-        const signature = await wallet.sendTransaction(txAta, connection);
-        await connection.confirmTransaction(signature, 'confirmed');
-        await new Promise(resolve => setTimeout(resolve, 1000));
+      if (setupTx.instructions.length > 0) {
+        const signature = await wallet.sendTransaction(setupTx, connection);
+        const latest = await connection.getLatestBlockhash();
+        await connection.confirmTransaction(
+          { signature, ...latest },
+          "confirmed"
+        );
       }
 
-      const escrowMakerAta = await getAssociatedTokenAddress(makerMint, escrow, true);
-      const escrowTakerAta = await getAssociatedTokenAddress(takerMint, escrow, true);
+      const escrowMakerAta = await getAssociatedTokenAddress(
+        data.mintMaker,
+        escrow,
+        true
+      );
+      const escrowTakerAta = await getAssociatedTokenAddress(
+        data.mintTaker,
+        escrow,
+        true
+      );
 
       await program.methods
         .execute()
         .accounts({
           escrow,
-          maker: data.maker,
-          makeAta: makerReceiveAta,
-          takerAta: takerReceiveAta,
+          maker: wallet.publicKey,
+          taker: data.taker,
+          makerReceiveAta,
+          takerReceiveAta,
           escrowMakerAta,
-          escrowTakeAta: escrowTakerAta,
+          escrowTakerAta,
           tokenProgram: TOKEN_PROGRAM_ID,
         })
         .rpc();
 
-      alert("🎉 Swap Completed Successfully!\n\nTokens have been exchanged and escrow closed.");
       setSelectedEscrow(null);
       await fetchEscrows();
-    } catch (err) {
-      console.error(err);
-      alert("❌ Swap execution failed");
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
-  // ============================================
-  // UI RENDERING
-  // ============================================
+  const rejectOffer = async (escrowToReject: EscrowAccount) => {
+    await runAction("Rejecting taker offer...", async () => {
+      if (!wallet.publicKey) throw new Error("Connect your wallet first");
+      if (!wallet.publicKey.equals(escrowToReject.account.maker)) {
+        throw new Error("Only the maker can reject this offer");
+      }
 
-  if (!wallet.publicKey) {
+      const escrow = escrowToReject.publicKey;
+      const data = escrowToReject.account;
+      if (data.taker.toBase58() === ZERO_PUBKEY) {
+        throw new Error("No taker offer exists on this escrow");
+      }
+
+      const takerAta = await getAssociatedTokenAddress(data.mintTaker, data.taker);
+      const escrowTakerAta = await getAssociatedTokenAddress(
+        data.mintTaker,
+        escrow,
+        true
+      );
+
+      await program.methods
+        .rejectOffer()
+        .accounts({
+          escrow,
+          maker: wallet.publicKey,
+          taker: data.taker,
+          takerAta,
+          escrowTakerAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .rpc();
+
+      await fetchEscrows();
+    });
+  };
+
+  const renderTokenLaunchpad = (side: LaunchSide) => {
+    const token = side === "maker" ? makerToken : takerToken;
+    const title = side === "maker" ? "Maker Token Launchpad" : "Taker Token Launchpad";
+    const copy = side === "maker"
+      ? "Create the token you will lock into escrow."
+      : "Create or select the token you want to offer to the maker.";
+
     return (
-      <div style={{ 
-        minHeight: "100vh", 
-        display: "flex", 
-        alignItems: "center", 
-        justifyContent: "center",
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-      }}>
-        <div style={{ 
-          background: "white", 
-          padding: "60px 80px", 
-          borderRadius: 16, 
-          boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-          textAlign: "center"
-        }}>
-          <div style={{ fontSize: 64, marginBottom: 20 }}>🔒</div>
-          <h2 style={{ margin: "0 0 16px 0", fontSize: 28, color: "#1a202c" }}>Connect Wallet</h2>
-          <p style={{ margin: 0, color: "#718096", fontSize: 16 }}>Please connect your wallet to continue</p>
+      <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
+        <div className="flex flex-col gap-4 border-b border-white/10 pb-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white shadow-[0_0_28px_rgba(168,85,247,0.45)]">
+              <Rocket className="h-6 w-6" />
+            </span>
+            <div>
+              <h2 className="text-2xl font-black">{title}</h2>
+              <p className="mt-1 text-sm text-slate-300">{copy}</p>
+            </div>
+          </div>
+          {token.mintAddress && (
+            <span className="inline-flex items-center gap-2 rounded-lg border border-emerald-300/25 bg-emerald-400/10 px-3 py-2 text-xs font-black text-emerald-200">
+              <CheckCircle2 className="h-4 w-4" />
+              Token live
+            </span>
+          )}
+        </div>
+
+        <div className="mt-6 grid gap-5">
+          <div className="rounded-lg border border-white/10 bg-[#080a1d]/55 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <label className="grid flex-1 gap-2 text-sm font-bold text-slate-200">
+                Use Existing SPL Token Mint
+                <input
+                  value={token.existingMintInput}
+                  onChange={(event) =>
+                    updateToken(side, { existingMintInput: event.target.value })
+                  }
+                  disabled={loading || Boolean(token.mintAddress)}
+                  placeholder="Paste an existing Tokenkeg mint address"
+                  className="min-h-11 rounded-lg border border-white/10 bg-[#050719]/75 px-4 font-mono text-xs text-white outline-none transition placeholder:text-slate-500 focus:border-violet-300/60 disabled:opacity-50"
+                />
+              </label>
+              <button
+                onClick={() => selectExistingMint(side)}
+                disabled={loading || Boolean(token.mintAddress) || !token.existingMintInput}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-4 text-sm font-black text-white transition hover:border-violet-300/50 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <Check className="h-4 w-4" />
+                Use Mint
+              </button>
+            </div>
+            <p className="mt-3 text-xs leading-5 text-slate-400">
+              Use this if the token already exists in your wallet. Otherwise launch a new SPL token below.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="grid gap-2 text-sm font-bold text-slate-200">
+              Token Name
+              <input
+                value={token.name}
+                onChange={(event) => updateToken(side, { name: event.target.value })}
+                disabled={loading || Boolean(token.mintAddress)}
+                placeholder="e.g. Community Coin"
+                className="min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-violet-300/60 disabled:opacity-50"
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-bold text-slate-200">
+              Symbol
+              <input
+                value={token.symbol}
+                onChange={(event) =>
+                  updateToken(side, { symbol: event.target.value.toUpperCase() })
+                }
+                disabled={loading || Boolean(token.mintAddress)}
+                maxLength={10}
+                placeholder="e.g. COM"
+                className="min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm uppercase text-white outline-none transition placeholder:text-slate-500 focus:border-violet-300/60 disabled:opacity-50"
+              />
+            </label>
+          </div>
+
+          <label className="grid gap-2 text-sm font-bold text-slate-200">
+            Description
+            <textarea
+              value={token.description}
+              onChange={(event) => updateToken(side, { description: event.target.value })}
+              disabled={loading || Boolean(token.mintAddress)}
+              rows={3}
+              placeholder="What is this token for?"
+              className="resize-none rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-violet-300/60 disabled:opacity-50"
+            />
+          </label>
+
+          <label className="grid gap-2 text-sm font-bold text-slate-200">
+            Initial Supply
+            <input
+              type="number"
+              min="1"
+              value={token.amount}
+              onChange={(event) => updateToken(side, { amount: event.target.value })}
+              disabled={loading || Boolean(token.mintAddress)}
+              placeholder="1000000"
+              className="min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-violet-300/60 disabled:opacity-50"
+            />
+          </label>
+
+          <div className="grid gap-2 text-sm font-bold text-slate-200">
+            Token Image
+            {!token.imagePreview ? (
+              <label className="grid cursor-pointer place-items-center rounded-lg border border-dashed border-white/15 bg-[#080a1d]/55 px-4 py-8 text-center transition hover:border-violet-300/50">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={loading || Boolean(token.mintAddress)}
+                  onChange={handleImageChange(side)}
+                />
+                <Upload className="mb-3 h-9 w-9 text-violet-300" />
+                <span className="text-sm text-slate-200">Upload token artwork</span>
+                <span className="mt-1 text-xs font-normal text-slate-500">
+                  PNG or JPG recommended
+                </span>
+              </label>
+            ) : (
+              <div className="relative overflow-hidden rounded-lg border border-white/10 bg-[#080a1d]">
+                <div
+                  className="h-48 bg-cover bg-center"
+                  style={{ backgroundImage: `url(${token.imagePreview})` }}
+                />
+                {!token.mintAddress && (
+                  <button
+                    onClick={() => clearImage(side)}
+                    disabled={loading}
+                    className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-black/70 text-red-300 transition hover:bg-red-950"
+                    aria-label="Remove token image"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {token.mintAddress && (
+            <div className="rounded-lg border border-emerald-300/20 bg-emerald-400/10 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-black text-emerald-200">Mint Address</p>
+                <button
+                  onClick={() => copyText(token.mintAddress)}
+                  className="text-violet-200 transition hover:text-white"
+                  aria-label="Copy mint address"
+                >
+                  <Copy className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="mt-2 break-all font-mono text-xs leading-5 text-slate-300">
+                {token.mintAddress}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <a
+                  href={explorerUrl("address", token.mintAddress)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-bold text-white"
+                >
+                  View Mint <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+                {token.txSig && (
+                  <a
+                    href={explorerUrl("tx", token.txSig)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-bold text-white"
+                  >
+                    View Tx <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={() => launchToken(side)}
+            disabled={
+              loading ||
+              !wallet.publicKey ||
+              Boolean(token.mintAddress) ||
+              !token.name ||
+              !token.symbol ||
+              !token.amount ||
+              !token.imageFile
+            }
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-600 px-5 text-sm font-black text-white shadow-[0_18px_42px_rgba(168,85,247,0.34)] transition hover:from-violet-400 hover:to-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
+            {token.mintAddress ? "Token Launched" : "Launch SPL Token"}
+          </button>
         </div>
       </div>
     );
-  }
+  };
 
-  return (
-    <div style={{ 
-      minHeight: "100vh",
-      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-      padding: "40px 20px"
-    }}>
-      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-        {/* Header */}
-        <div style={{ 
-          textAlign: "center", 
-          marginBottom: 40,
-          color: "white"
-        }}>
-          <h1 style={{ 
-            fontSize: 48, 
-            margin: "0 0 12px 0",
-            fontWeight: 700,
-            textShadow: "0 2px 10px rgba(0,0,0,0.2)"
-          }}>
-            🔄 Token Escrow
-          </h1>
-          <p style={{ 
-            fontSize: 18, 
-            margin: 0,
-            opacity: 0.9
-          }}>
-            Secure peer-to-peer token swaps on Solana
-          </p>
-        </div>
+  const renderEscrowCard = (escrow: EscrowAccount, mode: "maker" | "taker") => {
+    const isSelected = selectedEscrow?.publicKey.equals(escrow.publicKey);
+    const takerJoined = escrow.account.taker.toBase58() !== ZERO_PUBKEY;
 
-        {/* Tab Navigation */}
-        <div style={{ 
-          display: "flex", 
-          gap: 16, 
-          marginBottom: 32,
-          justifyContent: "center"
-        }}>
-          <button
-            onClick={() => setActiveTab("maker")}
-            style={{
-              padding: "14px 32px",
-              border: "none",
-              background: activeTab === "maker" ? "white" : "rgba(255,255,255,0.2)",
-              color: activeTab === "maker" ? "#667eea" : "white",
-              cursor: "pointer",
-              fontWeight: 600,
-              fontSize: 16,
-              borderRadius: 8,
-              transition: "all 0.3s ease",
-              boxShadow: activeTab === "maker" ? "0 4px 12px rgba(0,0,0,0.15)" : "none"
-            }}
-          >
-            👨‍💼 Maker (Create)
-          </button>
-          <button
-            onClick={() => setActiveTab("taker")}
-            style={{
-              padding: "14px 32px",
-              border: "none",
-              background: activeTab === "taker" ? "white" : "rgba(255,255,255,0.2)",
-              color: activeTab === "taker" ? "#667eea" : "white",
-              cursor: "pointer",
-              fontWeight: 600,
-              fontSize: 16,
-              borderRadius: 8,
-              transition: "all 0.3s ease",
-              boxShadow: activeTab === "taker" ? "0 4px 12px rgba(0,0,0,0.15)" : "none"
-            }}
-          >
-            🤝 Taker (Join)
-          </button>
-        </div>
-
-        {/* Main Content Card */}
-        <div style={{
-          background: "white",
-          borderRadius: 16,
-          boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-          overflow: "hidden"
-        }}>
-          {/* MAKER SIDE */}
-          {activeTab === "maker" && (
-            <div style={{ padding: 40 }}>
-              <h2 style={{ margin: "0 0 8px 0", fontSize: 28, color: "#1a202c" }}>Create Escrow</h2>
-              <p style={{ margin: "0 0 32px 0", color: "#718096", fontSize: 15 }}>
-                Follow these steps to create and fund an escrow offer
-              </p>
-
-              {/* Step 1: Create Mint */}
-              <div style={{ 
-                marginBottom: 24,
-                padding: 24,
-                background: "#f7fafc",
-                borderRadius: 12,
-                border: "2px solid #e2e8f0"
-              }}>
-                <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
-                  <div style={{ 
-                    width: 32, 
-                    height: 32, 
-                    borderRadius: "50%", 
-                    background: makerMintKeypair ? "#48bb78" : "#cbd5e0",
-                    color: "white",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: "bold",
-                    marginRight: 12
-                  }}>
-                    1
-                  </div>
-                  <h3 style={{ margin: 0, fontSize: 18, color: "#2d3748" }}>Create Your Token Mint</h3>
-                </div>
-                <p style={{ margin: "0 0 16px 0", color: "#4a5568", fontSize: 14, paddingLeft: 44 }}>
-                  Create the token mint for your side of the trade
-                </p>
-                {!makerMintKeypair ? (
-                  <div style={{ paddingLeft: 44 }}>
-                    <button
-                      onClick={createMakerMint}
-                      disabled={loading}
-                      style={{
-                        padding: "12px 28px",
-                        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 8,
-                        cursor: loading ? "not-allowed" : "pointer",
-                        fontWeight: 600,
-                        fontSize: 15,
-                        transition: "transform 0.2s",
-                        opacity: loading ? 0.6 : 1
-                      }}
-                      onMouseEnter={(e) => !loading && (e.currentTarget.style.transform = "translateY(-2px)")}
-                      onMouseLeave={(e) => e.currentTarget.style.transform = "translateY(0)"}
-                    >
-                      Create Token Mint
-                    </button>
-                  </div>
-                ) : (
-                  <div style={{ 
-                    marginLeft: 44,
-                    padding: 16, 
-                    background: "white",
-                    borderRadius: 8,
-                    border: "1px solid #e2e8f0"
-                  }}>
-                    <div style={{ color: "#48bb78", fontWeight: 600, marginBottom: 8, fontSize: 14 }}>
-                      ✓ Token Mint Created
-                    </div>
-                    <div style={{
-                      fontSize: 12,
-                      wordBreak: "break-all",
-                      fontFamily: "monospace",
-                      color: "#4a5568"
-                    }}>
-                      {makerMintKeypair.publicKey.toBase58()}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Step 2: Mint Tokens */}
-              <div style={{ 
-                marginBottom: 24,
-                padding: 24,
-                background: "#f7fafc",
-                borderRadius: 12,
-                border: "2px solid #e2e8f0",
-                opacity: !makerMintKeypair ? 0.5 : 1
-              }}>
-                <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
-                  <div style={{ 
-                    width: 32, 
-                    height: 32, 
-                    borderRadius: "50%", 
-                    background: "#cbd5e0",
-                    color: "white",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: "bold",
-                    marginRight: 12
-                  }}>
-                    2
-                  </div>
-                  <h3 style={{ margin: 0, fontSize: 18, color: "#2d3748" }}>Mint Tokens to Yourself</h3>
-                </div>
-                <p style={{ margin: "0 0 16px 0", color: "#4a5568", fontSize: 14, paddingLeft: 44 }}>
-                  Mint 100 tokens to your wallet for the escrow
-                </p>
-                <div style={{ paddingLeft: 44 }}>
-                  <button
-                    onClick={mintTokensToMaker}
-                    disabled={loading || !makerMintKeypair}
-                    style={{
-                      padding: "12px 28px",
-                      background: !makerMintKeypair ? "#cbd5e0" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 8,
-                      cursor: (!makerMintKeypair || loading) ? "not-allowed" : "pointer",
-                      fontWeight: 600,
-                      fontSize: 15,
-                      opacity: loading ? 0.6 : 1
-                    }}
-                  >
-                    Mint 100 Tokens
-                  </button>
-                </div>
-              </div>
-
-              {/* Step 3: Initialize Escrow */}
-              <div style={{ 
-                marginBottom: 24,
-                padding: 24,
-                background: "#f7fafc",
-                borderRadius: 12,
-                border: "2px solid #e2e8f0",
-                opacity: !makerMintKeypair ? 0.5 : 1
-              }}>
-                <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
-                  <div style={{ 
-                    width: 32, 
-                    height: 32, 
-                    borderRadius: "50%", 
-                    background: escrowCreated ? "#48bb78" : "#cbd5e0",
-                    color: "white",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: "bold",
-                    marginRight: 12
-                  }}>
-                    3
-                  </div>
-                  <h3 style={{ margin: 0, fontSize: 18, color: "#2d3748" }}>Initialize Escrow</h3>
-                </div>
-                <div style={{ paddingLeft: 44 }}>
-                  <div style={{ 
-                    padding: 12, 
-                    background: "#fef5e7", 
-                    borderRadius: 8, 
-                    marginBottom: 16,
-                    border: "1px solid #f6e05e"
-                  }}>
-                    <p style={{ margin: 0, color: "#d97706", fontSize: 13, fontWeight: 600 }}>
-                      ⚠️ You need the Taker's mint address first!
-                    </p>
-                    <p style={{ margin: "4px 0 0 0", color: "#92400e", fontSize: 12 }}>
-                      The taker must create their mint and share the address with you.
-                    </p>
-                  </div>
-
-                  {/* ✅ NEW: Escrow ID Input */}
-                  <div style={{ marginBottom: 16 }}>
-                    <label style={{ 
-                      display: "block", 
-                      marginBottom: 8,
-                      fontWeight: 600,
-                      color: "#4a5568",
-                      fontSize: 14
-                    }}>
-                      Escrow ID (unique identifier)
-                    </label>
-                    <input
-                      type="number"
-                      value={escrowId}
-                      onChange={(e) => setEscrowId(e.target.value)}
-                      placeholder="1"
-                      disabled={!makerMintKeypair}
-                      style={{
-                        padding: "12px 16px",
-                        width: "200px",
-                        border: "2px solid #e2e8f0",
-                        borderRadius: 8,
-                        fontSize: 14,
-                        boxSizing: "border-box",
-                        outline: "none"
-                      }}
-                    />
-                    <p style={{ margin: "6px 0 0 0", fontSize: 12, color: "#718096" }}>
-                      Use a unique number for each escrow (default: 1)
-                    </p>
-                  </div>
-
-                  <div style={{ marginBottom: 16 }}>
-                    <label style={{ 
-                      display: "block", 
-                      marginBottom: 8,
-                      fontWeight: 600,
-                      color: "#4a5568",
-                      fontSize: 14
-                    }}>
-                      Taker's Token Mint Address
-                    </label>
-                    <input
-                      type="text"
-                      value={takerMintInput}
-                      onChange={(e) => setTakerMintInput(e.target.value)}
-                      placeholder="Paste taker's mint address here..."
-                      disabled={!makerMintKeypair}
-                      style={{
-                        padding: "12px 16px",
-                        width: "100%",
-                        border: "2px solid #e2e8f0",
-                        borderRadius: 8,
-                        fontSize: 13,
-                        fontFamily: "monospace",
-                        boxSizing: "border-box",
-                        outline: "none",
-                        transition: "border-color 0.2s"
-                      }}
-                      onFocus={(e) => e.currentTarget.style.borderColor = "#667eea"}
-                      onBlur={(e) => e.currentTarget.style.borderColor = "#e2e8f0"}
-                    />
-                  </div>
-
-                  <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{
-                        display: "block",
-                        marginBottom: 8,
-                        fontWeight: 600,
-                        color: "#4a5568",
-                        fontSize: 14
-                      }}>
-                        You Offer (tokens)
-                      </label>
-                      <input
-                        type="number"
-                        value={makerAmount}
-                        onChange={(e) => setMakerAmount(e.target.value)}
-                        disabled={!makerMintKeypair}
-                        style={{
-                          padding: "12px 16px",
-                          width: "100%",
-                          border: "2px solid #e2e8f0",
-                          borderRadius: 8,
-                          fontSize: 14,
-                          boxSizing: "border-box",
-                          outline: "none"
-                        }}
-                      />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{
-                        display: "block",
-                        marginBottom: 8,
-                        fontWeight: 600,
-                        color: "#4a5568",
-                        fontSize: 14
-                      }}>
-                        You Request (tokens)
-                      </label>
-                      <input
-                        type="number"
-                        value={takerAmount}
-                        onChange={(e) => setTakerAmount(e.target.value)}
-                        disabled={!makerMintKeypair}
-                        style={{
-                          padding: "12px 16px",
-                          width: "100%",
-                          border: "2px solid #e2e8f0",
-                          borderRadius: 8,
-                          fontSize: 14,
-                          boxSizing: "border-box",
-                          outline: "none"
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={initializeEscrow}
-                    disabled={loading || !makerMintKeypair || !takerMintInput || escrowCreated}
-                    style={{
-                      padding: "12px 28px",
-                      background: (!makerMintKeypair || !takerMintInput || escrowCreated) ? "#cbd5e0" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 8,
-                      cursor: (!makerMintKeypair || !takerMintInput || escrowCreated || loading) ? "not-allowed" : "pointer",
-                      fontWeight: 600,
-                      fontSize: 15,
-                      opacity: loading ? 0.6 : 1
-                    }}
-                  >
-                    {escrowCreated ? "✅ Escrow Initialized" : "Initialize Escrow"}
-                  </button>
-                </div>
-              </div>
-
-              {/* Step 4: Deposit Tokens */}
-              <div style={{ 
-                marginBottom: 24,
-                padding: 24,
-                background: "#f7fafc",
-                borderRadius: 12,
-                border: "2px solid #e2e8f0",
-                opacity: !escrowCreated ? 0.5 : 1
-              }}>
-                <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
-                  <div style={{ 
-                    width: 32, 
-                    height: 32, 
-                    borderRadius: "50%", 
-                    background: "#cbd5e0",
-                    color: "white",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: "bold",
-                    marginRight: 12
-                  }}>
-                    4
-                  </div>
-                  <h3 style={{ margin: 0, fontSize: 18, color: "#2d3748" }}>Deposit Your Tokens</h3>
-                </div>
-                <p style={{ margin: "0 0 16px 0", color: "#4a5568", fontSize: 14, paddingLeft: 44 }}>
-                  Transfer your tokens into the escrow account
-                </p>
-                <div style={{ paddingLeft: 44 }}>
-                  <button
-                    onClick={depositMakerTokens}
-                    disabled={loading || !escrowCreated}
-                    style={{
-                      padding: "12px 28px",
-                      background: !escrowCreated ? "#cbd5e0" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 8,
-                      cursor: (!escrowCreated || loading) ? "not-allowed" : "pointer",
-                      fontWeight: 600,
-                      fontSize: 15,
-                      opacity: loading ? 0.6 : 1
-                    }}
-                  >
-                    Deposit Tokens
-                  </button>
-                </div>
-              </div>
-
-              {/* Step 5: Execute Swap */}
-              <div style={{ 
-                padding: 24,
-                background: "#fef5e7",
-                borderRadius: 12,
-                border: "2px solid #f6e05e"
-              }}>
-                <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
-                  <div style={{ 
-                    width: 32, 
-                    height: 32, 
-                    borderRadius: "50%", 
-                    background: "#f59e0b",
-                    color: "white",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: "bold",
-                    marginRight: 12
-                  }}>
-                    5
-                  </div>
-                  <h3 style={{ margin: 0, fontSize: 18, color: "#2d3748" }}>Execute Swap</h3>
-                </div>
-                <p style={{ margin: "0 0 16px 0", color: "#92400e", fontSize: 14, paddingLeft: 44 }}>
-                  Wait for the taker to deposit, then complete the swap
-                </p>
-                
-                <div style={{ paddingLeft: 44 }}>
-                  <h4 style={{ margin: "0 0 12px 0", fontSize: 15, color: "#2d3748" }}>Your Escrows:</h4>
-                  
-                  {escrows.filter(e => e.account.maker.equals(wallet.publicKey!)).length === 0 ? (
-                    <p style={{ color: "#a0aec0", fontSize: 14 }}>No escrows created yet</p>
-                  ) : (
-                    <div style={{ display: "grid", gap: 12 }}>
-                      {escrows.filter(e => e.account.maker.equals(wallet.publicKey!)).map((e, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            padding: 16,
-                            background: "white",
-                            borderRadius: 8,
-                            border: "1px solid #e2e8f0"
-                          }}
-                        >
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 12, color: "#718096", marginBottom: 6 }}>
-                                Escrow ID: {e.account.escrowId.toString()} | {e.publicKey.toBase58().slice(0, 8)}...
-                              </div>
-                              <div style={{ fontSize: 13, marginBottom: 4 }}>
-                                <span style={{ 
-                                  display: "inline-block",
-                                  padding: "4px 10px",
-                                  borderRadius: 6,
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  marginRight: 8,
-                                  background: e.account.depositMaker ? "#c6f6d5" : "#fed7d7",
-                                  color: e.account.depositMaker ? "#22543d" : "#742a2a"
-                                }}>
-                                  You: {e.account.depositMaker ? "✅ Deposited" : "❌ Pending"}
-                                </span>
-                                <span style={{ 
-                                  display: "inline-block",
-                                  padding: "4px 10px",
-                                  borderRadius: 6,
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  background: e.account.depositTaker ? "#c6f6d5" : "#fed7d7",
-                                  color: e.account.depositTaker ? "#22543d" : "#742a2a"
-                                }}>
-                                  Taker: {e.account.depositTaker ? "✅ Deposited" : "❌ Pending"}
-                                </span>
-                              </div>
-                            </div>
-                            {e.account.depositMaker && e.account.depositTaker && (
-                              <button
-                                onClick={() => { setSelectedEscrow(e); executeSwap(); }}
-                                disabled={loading}
-                                style={{
-                                  padding: "10px 24px",
-                                  background: "linear-gradient(135deg, #48bb78 0%, #38a169 100%)",
-                                  color: "white",
-                                  border: "none",
-                                  borderRadius: 8,
-                                  cursor: loading ? "not-allowed" : "pointer",
-                                  fontWeight: 600,
-                                  fontSize: 14,
-                                  marginLeft: 16
-                                }}
-                              >
-                                🎉 Execute Swap
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAKER SIDE - Similar structure, keeping original code */}
-          {activeTab === "taker" && (
-            <div style={{ padding: 40 }}>
-              <h2 style={{ margin: "0 0 8px 0", fontSize: 28, color: "#1a202c" }}>Join Escrow</h2>
-              <p style={{ margin: "0 0 32px 0", color: "#718096", fontSize: 15 }}>
-                Follow these steps to join and complete an escrow swap
-              </p>
-
-              {/* Taker Steps - keeping original implementation */}
-              <div style={{ 
-                marginBottom: 24,
-                padding: 24,
-                background: "#f7fafc",
-                borderRadius: 12,
-                border: "2px solid #e2e8f0"
-              }}>
-                <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
-                  <div style={{ 
-                    width: 32, 
-                    height: 32, 
-                    borderRadius: "50%", 
-                    background: takerMintKeypair ? "#48bb78" : "#cbd5e0",
-                    color: "white",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: "bold",
-                    marginRight: 12
-                  }}>
-                    1
-                  </div>
-                  <h3 style={{ margin: 0, fontSize: 18, color: "#2d3748" }}>Create Your Token Mint</h3>
-                </div>
-                <p style={{ margin: "0 0 16px 0", color: "#4a5568", fontSize: 14, paddingLeft: 44 }}>
-                  Create the token mint for your side of the trade
-                </p>
-                {!takerMintKeypair ? (
-                  <div style={{ paddingLeft: 44 }}>
-                    <button
-                      onClick={createTakerMint}
-                      disabled={loading}
-                      style={{
-                        padding: "12px 28px",
-                        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 8,
-                        cursor: loading ? "not-allowed" : "pointer",
-                        fontWeight: 600,
-                        fontSize: 15,
-                        transition: "transform 0.2s",
-                        opacity: loading ? 0.6 : 1
-                      }}
-                      onMouseEnter={(e) => !loading && (e.currentTarget.style.transform = "translateY(-2px)")}
-                      onMouseLeave={(e) => e.currentTarget.style.transform = "translateY(0)"}
-                    >
-                      Create Token Mint
-                    </button>
-                  </div>
-                ) : (
-                  <div style={{ paddingLeft: 44 }}>
-                    <div style={{ 
-                      padding: 16, 
-                      background: "white",
-                      borderRadius: 8,
-                      border: "1px solid #e2e8f0",
-                      marginBottom: 12
-                    }}>
-                      <div style={{ color: "#48bb78", fontWeight: 600, marginBottom: 8, fontSize: 14 }}>
-                        ✓ Token Mint Created
-                      </div>
-                      <div style={{
-                        fontSize: 12,
-                        wordBreak: "break-all",
-                        fontFamily: "monospace",
-                        color: "#4a5568"
-                      }}>
-                        {takerMintKeypair.publicKey.toBase58()}
-                      </div>
-                    </div>
-                    <div style={{ 
-                      padding: 12, 
-                      background: "#fef5e7", 
-                      borderRadius: 8,
-                      border: "1px solid #f6e05e"
-                    }}>
-                      <p style={{ margin: 0, color: "#d97706", fontSize: 13, fontWeight: 600 }}>
-                        ⚠️ Share this address with the maker!
-                      </p>
-                      <p style={{ margin: "4px 0 0 0", color: "#92400e", fontSize: 12 }}>
-                        They need it to create the escrow.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div style={{ 
-                marginBottom: 24,
-                padding: 24,
-                background: "#f7fafc",
-                borderRadius: 12,
-                border: "2px solid #e2e8f0",
-                opacity: !takerMintKeypair ? 0.5 : 1
-              }}>
-                <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
-                  <div style={{ 
-                    width: 32, 
-                    height: 32, 
-                    borderRadius: "50%", 
-                    background: "#cbd5e0",
-                    color: "white",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: "bold",
-                    marginRight: 12
-                  }}>
-                    2
-                  </div>
-                  <h3 style={{ margin: 0, fontSize: 18, color: "#2d3748" }}>Mint Tokens to Yourself</h3>
-                </div>
-                <p style={{ margin: "0 0 16px 0", color: "#4a5568", fontSize: 14, paddingLeft: 44 }}>
-                  Mint tokens to your wallet for the swap
-                </p>
-                <div style={{ paddingLeft: 44 }}>
-                  <div style={{ marginBottom: 16 }}>
-                    <label style={{
-                      display: "block",
-                      marginBottom: 8,
-                      fontWeight: 600,
-                      color: "#4a5568",
-                      fontSize: 14
-                    }}>
-                      Amount to Mint
-                    </label>
-                    <input
-                      type="number"
-                      value={mintAmount}
-                      onChange={(e) => setMintAmount(e.target.value)}
-                      disabled={!takerMintKeypair}
-                      style={{
-                        padding: "12px 16px",
-                        width: "200px",
-                        border: "2px solid #e2e8f0",
-                        borderRadius: 8,
-                        fontSize: 14,
-                        outline: "none"
-                      }}
-                    />
-                  </div>
-                  <button
-                    onClick={mintTokensToTaker}
-                    disabled={loading || !takerMintKeypair}
-                    style={{
-                      padding: "12px 28px",
-                      background: !takerMintKeypair ? "#cbd5e0" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 8,
-                      cursor: (!takerMintKeypair || loading) ? "not-allowed" : "pointer",
-                      fontWeight: 600,
-                      fontSize: 15,
-                      opacity: loading ? 0.6 : 1
-                    }}
-                  >
-                    Mint Tokens
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ 
-                marginBottom: 24,
-                padding: 24,
-                background: "#f7fafc",
-                borderRadius: 12,
-                border: "2px solid #e2e8f0"
-              }}>
-                <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
-                  <div style={{ 
-                    width: 32, 
-                    height: 32, 
-                    borderRadius: "50%", 
-                    background: selectedEscrow ? "#48bb78" : "#cbd5e0",
-                    color: "white",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: "bold",
-                    marginRight: 12
-                  }}>
-                    3
-                  </div>
-                  <h3 style={{ margin: 0, fontSize: 18, color: "#2d3748" }}>Select an Escrow</h3>
-                </div>
-                <p style={{ margin: "0 0 16px 0", color: "#4a5568", fontSize: 14, paddingLeft: 44 }}>
-                  Choose an available escrow created by the maker
-                </p>
-                
-                <div style={{ paddingLeft: 44 }}>
-                  {escrows.length === 0 ? (
-                    <p style={{ color: "#a0aec0", fontSize: 14 }}>No escrows available</p>
-                  ) : (
-                    <div style={{ display: "grid", gap: 12 }}>
-                      {escrows.map((e, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            padding: 16,
-                            background: selectedEscrow?.publicKey.equals(e.publicKey) ? "#ebf4ff" : "white",
-                            borderRadius: 8,
-                            border: selectedEscrow?.publicKey.equals(e.publicKey) ? "2px solid #667eea" : "1px solid #e2e8f0",
-                            cursor: "pointer",
-                            transition: "all 0.2s"
-                          }}
-                          onClick={() => setSelectedEscrow(e)}
-                        >
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 10 }}>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 12, color: "#718096", marginBottom: 8 }}>
-                                ID: {e.account.escrowId.toString()} | Creator: {e.account.maker.toBase58().slice(0, 8)}...
-                              </div>
-                              <div style={{ fontSize: 13, color: "#4a5568", marginBottom: 4 }}>
-                                Offering: <strong>{(e.account.amountMaker.toNumber() / 1_000_000).toFixed(2)}</strong> tokens
-                              </div>
-                              <div style={{ fontSize: 13, color: "#4a5568" }}>
-                                Requesting: <strong>{(e.account.amountTaker.toNumber() / 1_000_000).toFixed(2)}</strong> tokens
-                              </div>
-                            </div>
-                            <div style={{ 
-                              padding: "6px 12px",
-                              background: e.account.depositMaker ? "#c6f6d5" : "#fed7d7",
-                              color: e.account.depositMaker ? "#22543d" : "#742a2a",
-                              borderRadius: 6,
-                              fontSize: 12,
-                              fontWeight: 600
-                            }}>
-                              {e.account.depositMaker ? "✅ Funded" : "❌ Not Funded"}
-                            </div>
-                          </div>
-                          {selectedEscrow?.publicKey.equals(e.publicKey) && (
-                            <div style={{ 
-                              marginTop: 10,
-                              padding: 10,
-                              background: "#667eea",
-                              color: "white",
-                              borderRadius: 6,
-                              fontSize: 12,
-                              textAlign: "center",
-                              fontWeight: 600
-                            }}>
-                              ✓ Selected
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {selectedEscrow && (
-                <div style={{ 
-                  padding: 24,
-                  background: "#fef5e7",
-                  borderRadius: 12,
-                  border: "2px solid #f6e05e"
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
-                    <div style={{ 
-                      width: 32, 
-                      height: 32, 
-                      borderRadius: "50%", 
-                      background: selectedEscrow.account.depositTaker ? "#48bb78" : "#cbd5e0",
-                      color: "white",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: "bold",
-                      marginRight: 12
-                    }}>
-                      4
-                    </div>
-                    <h3 style={{ margin: 0, fontSize: 18, color: "#2d3748" }}>Deposit & Wait</h3>
-                  </div>
-                  
-                  <div style={{ paddingLeft: 44 }}>
-                    <p style={{ margin: "0 0 16px 0", color: "#92400e", fontSize: 14 }}>
-                      Deposit your tokens and wait for the maker to execute the swap
-                    </p>
-
-                    {!selectedEscrow.account.depositTaker && (
-                      <button
-                        onClick={depositTakerTokens}
-                        disabled={loading}
-                        style={{
-                          padding: "12px 28px",
-                          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                          color: "white",
-                          border: "none",
-                          borderRadius: 8,
-                          cursor: loading ? "not-allowed" : "pointer",
-                          fontWeight: 600,
-                          fontSize: 15,
-                          marginBottom: 16,
-                          opacity: loading ? 0.6 : 1
-                        }}
-                      >
-                        Deposit Your Tokens
-                      </button>
-                    )}
-
-                    <div style={{ 
-                      padding: 16, 
-                      background: "white", 
-                      borderRadius: 8,
-                      border: "1px solid #e2e8f0"
-                    }}>
-                      <p style={{ margin: "0 0 10px 0", fontSize: 14, fontWeight: 600, color: "#2d3748" }}>
-                        Current Status:
-                      </p>
-                      <div style={{ marginBottom: 6 }}>
-                        <span style={{ 
-                          display: "inline-block",
-                          padding: "4px 10px",
-                          borderRadius: 6,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          marginRight: 8,
-                          background: selectedEscrow.account.depositMaker ? "#c6f6d5" : "#fed7d7",
-                          color: selectedEscrow.account.depositMaker ? "#22543d" : "#742a2a"
-                        }}>
-                          Maker: {selectedEscrow.account.depositMaker ? "✅ Deposited" : "❌ Not Deposited"}
-                        </span>
-                      </div>
-                      <div>
-                        <span style={{ 
-                          display: "inline-block",
-                          padding: "4px 10px",
-                          borderRadius: 6,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          background: selectedEscrow.account.depositTaker ? "#c6f6d5" : "#fed7d7",
-                          color: selectedEscrow.account.depositTaker ? "#22543d" : "#742a2a"
-                        }}>
-                          You: {selectedEscrow.account.depositTaker ? "✅ Deposited" : "❌ Not Deposited"}
-                        </span>
-                      </div>
-                      {selectedEscrow.account.depositMaker && selectedEscrow.account.depositTaker && (
-                        <div style={{ 
-                          marginTop: 12,
-                          padding: 12,
-                          background: "#c6f6d5",
-                          borderRadius: 6,
-                          color: "#22543d",
-                          fontSize: 13,
-                          fontWeight: 600,
-                          textAlign: "center"
-                        }}>
-                          ✅ Both parties deposited! Waiting for maker to execute the swap...
-                        </div>
-                      )}
-                    </div>
-
-                    <div style={{ 
-                      marginTop: 16,
-                      padding: 12, 
-                      background: "#fff3cd", 
-                      borderRadius: 8,
-                      border: "1px solid #ffeaa7"
-                    }}>
-                      <p style={{ margin: 0, color: "#856404", fontSize: 12 }}>
-                        ⚠️ <strong>Note:</strong> Only the maker can execute the swap. Once both parties have deposited, the maker will complete the transaction.
-                      </p>
-                    </div>
-                  </div>
-                </div>
+    return (
+      <div
+        key={escrow.publicKey.toBase58()}
+        className={`rounded-lg border p-4 transition ${
+          isSelected
+            ? "border-violet-300/70 bg-violet-500/15"
+            : "border-white/10 bg-white/[0.04]"
+        }`}
+      >
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="font-mono text-xs text-slate-400">
+              ID {escrow.account.escrowId.toString()} | {shortenKey(escrow.publicKey)}
+            </p>
+            <p className="mt-2 text-sm text-slate-200">
+              Maker offers{" "}
+              <span className="font-black text-white">
+                {formatRawAmount(escrow.account.amountMaker)}
+              </span>
+              {takerJoined ? (
+                <>
+                  {" "}for taker offer{" "}
+                  <span className="font-black text-white">
+                    {formatRawAmount(escrow.account.amountTaker)}
+                  </span>
+                </>
+              ) : (
+                <span className="text-slate-400"> and is waiting for a taker offer</span>
               )}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+              <span className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2">
+                Maker: {escrow.account.depositMaker ? "Deposited" : "Pending"}
+              </span>
+              <span className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2">
+                Taker: {escrow.account.depositTaker ? "Deposited" : "Pending"}
+              </span>
+              <span className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2">
+                Joined: {takerJoined ? shortenKey(escrow.account.taker) : "No"}
+              </span>
             </div>
+          </div>
+
+          {mode === "maker" ? (
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                onClick={() => rejectOffer(escrow)}
+                disabled={
+                  loading ||
+                  !wallet.publicKey?.equals(escrow.account.maker) ||
+                  !escrow.account.depositTaker
+                }
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-4 text-sm font-black text-white transition hover:border-red-300/40 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <X className="h-4 w-4" />
+                Reject
+              </button>
+              <button
+                onClick={() => executeSwap(escrow)}
+                disabled={
+                  loading ||
+                  !wallet.publicKey?.equals(escrow.account.maker) ||
+                  !escrow.account.depositMaker ||
+                  !escrow.account.depositTaker
+                }
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-600 px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <Rocket className="h-4 w-4" />
+                Execute
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setSelectedEscrow(escrow)}
+              disabled={loading || escrow.account.depositTaker}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-4 text-sm font-black text-white transition hover:border-violet-300/50 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <Check className="h-4 w-4" />
+              {isSelected ? "Selected" : "Select"}
+            </button>
           )}
         </div>
       </div>
+    );
+  };
 
-      {loading && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: "rgba(0,0,0,0.5)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000,
-        }}>
-          <div style={{ 
-            background: "white", 
-            padding: 40, 
-            borderRadius: 16,
-            boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-            textAlign: "center"
-          }}>
-            <div style={{ 
-              width: 50, 
-              height: 50, 
-              border: "4px solid #f3f3f3",
-              borderTop: "4px solid #667eea",
-              borderRadius: "50%",
-              margin: "0 auto 20px",
-              animation: "spin 1s linear infinite"
-            }} />
-            <h3 style={{ margin: 0, color: "#1a202c" }}>⏳ Processing Transaction...</h3>
-            <p style={{ margin: "8px 0 0 0", color: "#718096", fontSize: 14 }}>Please wait</p>
+  return (
+    <div className="relative min-h-screen overflow-hidden bg-[#020412] text-white">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_58%_8%,rgba(124,58,237,0.30),transparent_27%),radial-gradient(circle_at_16%_22%,rgba(126,34,206,0.28),transparent_24%),radial-gradient(circle_at_86%_84%,rgba(37,99,235,0.14),transparent_24%),linear-gradient(180deg,#020412_0%,#06071c_45%,#020412_100%)]" />
+      <div className="pointer-events-none absolute inset-0 opacity-35 [background-image:linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] [background-size:70px_70px]" />
+
+      <div className="relative mx-auto w-full max-w-[92rem] px-4 pb-10 pt-6 sm:px-6 lg:px-8">
+        <section className="grid gap-6 lg:grid-cols-[1fr_22rem] lg:items-start">
+          <div>
+            <div className="flex items-center gap-4">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border border-violet-400/30 bg-violet-500/10 shadow-[0_0_44px_rgba(168,85,247,0.35)]">
+                <LockKeyhole className="h-10 w-10 text-fuchsia-300" />
+              </div>
+              <div>
+                <h1 className="bg-gradient-to-r from-violet-400 via-purple-400 to-fuchsia-500 bg-clip-text text-4xl font-black leading-tight text-transparent sm:text-5xl">
+                  Token Swap Launchpad
+                </h1>
+                <p className="mt-2 text-base text-slate-300 sm:text-lg">
+                  Launch classic SPL tokens, lock them in escrow, and swap peer to peer.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 grid max-w-2xl grid-cols-3 gap-2 rounded-lg border border-white/10 bg-[#07081b]/70 p-1">
+              {[
+                { key: "maker", label: "Maker", icon: WalletCards },
+                { key: "taker", label: "Taker", icon: Handshake },
+                { key: "escrows", label: "Escrows", icon: Eye },
+              ].map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.key}
+                    onClick={() => setActiveTab(item.key as typeof activeTab)}
+                    className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg text-sm font-black transition ${
+                      activeTab === item.key
+                        ? "bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white shadow-[0_12px_32px_rgba(168,85,247,0.35)]"
+                        : "text-slate-300 hover:bg-white/[0.06] hover:text-white"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
 
-      <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      `}</style>
+          <aside className="rounded-2xl border border-white/10 bg-white/[0.045] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
+            <div className="flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/20 text-violet-200">
+                <FileText className="h-4 w-4" />
+              </span>
+              <h2 className="text-xl font-black">Swap Summary</h2>
+            </div>
+
+            <div className="mt-5 grid gap-4 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-300">Wallet</span>
+                <span className="font-mono text-xs font-black">
+                  {shortenKey(wallet.publicKey)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-300">Balance</span>
+                <span className="font-black">
+                  {solBalance === null ? "--" : solBalance.toFixed(3)} SOL
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-300">Network</span>
+                <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-bold">
+                  <Sparkles className="h-4 w-4 text-cyan-300" />
+                  Solana {EXPLORER_CLUSTER}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-300">Escrows</span>
+                <span className="font-black text-emerald-300">{activeEscrowCount} Active</span>
+              </div>
+            </div>
+
+            <button
+              onClick={fetchEscrows}
+              disabled={!wallet.publicKey || loading}
+              className="mt-6 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-violet-400/45 bg-violet-500/10 text-sm font-black text-violet-200 transition hover:bg-violet-500/18 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <Eye className="h-4 w-4" />
+              Refresh Escrows
+            </button>
+          </aside>
+        </section>
+
+        {(error || status) && (
+          <section className="mt-6">
+            {error ? (
+              <div className="flex items-center gap-3 rounded-lg border border-red-400/30 bg-red-500/10 p-4 text-red-200">
+                <X className="h-5 w-5 shrink-0" />
+                <p className="text-sm">{error}</p>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 rounded-lg border border-violet-300/25 bg-violet-500/10 p-4 text-violet-100">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <p className="text-sm font-bold">{status}</p>
+              </div>
+            )}
+          </section>
+        )}
+
+        <section className="mt-6 grid gap-5 xl:grid-cols-[1fr_22rem]">
+          <div className="grid gap-5">
+            {activeTab === "maker" && (
+              <>
+                {renderTokenLaunchpad("maker")}
+
+                <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
+                  <div className="flex items-center gap-4 border-b border-white/10 pb-5">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-600 text-lg font-black">
+                      2
+                    </span>
+                    <div>
+                      <h2 className="text-2xl font-black">Create Escrow Terms</h2>
+                      <p className="mt-1 text-sm text-slate-300">
+                        Initialize with your token only. Takers choose their token when they join.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 grid gap-4 md:grid-cols-2">
+                    <label className="grid gap-2 text-sm font-bold text-slate-200">
+                      Escrow ID
+                      <input
+                        type="number"
+                        value={escrowId}
+                        onChange={(event) => setEscrowId(event.target.value)}
+                        disabled={loading}
+                        className="min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm text-white outline-none focus:border-violet-300/60"
+                      />
+                    </label>
+                    <label className="grid gap-2 text-sm font-bold text-slate-200">
+                      Maker Deposit Amount
+                      <input
+                        type="number"
+                        value={makerAmount}
+                        onChange={(event) => setMakerAmount(event.target.value)}
+                        disabled={loading}
+                        className="min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm text-white outline-none focus:border-violet-300/60"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <button
+                      onClick={initializeEscrow}
+                      disabled={
+                        loading ||
+                        !wallet.publicKey ||
+                        !makerToken.mintAddress
+                      }
+                      className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-5 text-sm font-black text-white transition hover:border-violet-300/50 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <ShieldCheck className="h-4 w-4" />
+                      Initialize Escrow
+                    </button>
+                    <button
+                      onClick={depositMakerTokens}
+                      disabled={loading || !wallet.publicKey || !makerToken.mintAddress}
+                      className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-600 px-5 text-sm font-black text-white shadow-[0_18px_42px_rgba(168,85,247,0.34)] transition hover:from-violet-400 hover:to-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <Rocket className="h-4 w-4" />
+                      Deposit Maker Tokens
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {activeTab === "taker" && (
+              <>
+                {renderTokenLaunchpad("taker")}
+
+                <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
+                  <div className="flex items-center gap-4 border-b border-white/10 pb-5">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-600 text-lg font-black">
+                      2
+                    </span>
+                    <div>
+                      <h2 className="text-2xl font-black">Join an Escrow</h2>
+                      <p className="mt-1 text-sm text-slate-300">
+                        Select a maker escrow, choose your token, and propose your amount.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-3">
+                    {joinableEscrows.length === 0 ? (
+                      <p className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">
+                        No joinable escrows found.
+                      </p>
+                    ) : (
+                      joinableEscrows.map((escrow) => renderEscrowCard(escrow, "taker"))
+                    )}
+                  </div>
+
+                  {selectedEscrow && (
+                    <div className="mt-5 rounded-lg border border-fuchsia-400/25 bg-fuchsia-500/10 p-4">
+                      <p className="text-sm font-black">Your Offer</p>
+                      <p className="mt-2 text-xs leading-5 text-slate-300">
+                        The maker will review your token mint and amount before executing.
+                      </p>
+                      <label className="mt-4 grid gap-2 text-sm font-bold text-slate-200">
+                        Taker Offer Amount
+                        <input
+                          type="number"
+                          value={takerAmount}
+                          onChange={(event) => setTakerAmount(event.target.value)}
+                          disabled={loading}
+                          className="min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm text-white outline-none focus:border-violet-300/60"
+                        />
+                      </label>
+                      <button
+                        onClick={depositTakerTokens}
+                        disabled={
+                          loading ||
+                          selectedEscrow.account.depositTaker ||
+                          !takerToken.mintAddress
+                        }
+                        className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-600 px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <Rocket className="h-4 w-4" />
+                        Deposit Taker Tokens
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {activeTab === "escrows" && (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
+                <div className="flex flex-col gap-4 border-b border-white/10 pb-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-2xl font-black">Your Maker Escrows</h2>
+                    <p className="mt-1 text-sm text-slate-300">
+                      Review taker offers, then execute or reject them.
+                    </p>
+                  </div>
+                  <span className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black">
+                    {makerEscrows.length} Created
+                  </span>
+                </div>
+
+                <div className="mt-5 grid gap-3">
+                  {makerEscrows.length === 0 ? (
+                    <p className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">
+                      No escrows created by this wallet yet.
+                    </p>
+                  ) : (
+                    makerEscrows.map((escrow) => renderEscrowCard(escrow, "maker"))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <aside className="grid h-fit gap-5">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
+              <h2 className="text-xl font-black">Flow</h2>
+              <div className="mt-5 grid gap-4">
+                {[
+                  "Maker launches a classic SPL token.",
+                  "Maker initializes escrow with only their token and amount.",
+                  "Maker deposits tokens into the escrow vault.",
+                  "Taker selects an escrow, chooses any SPL token, and deposits an offer.",
+                  "Maker executes the swap or rejects the taker offer.",
+                ].map((step, index) => (
+                  <div key={step} className="flex gap-3">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-500/20 text-xs font-black text-violet-100">
+                      {index + 1}
+                    </span>
+                    <p className="text-sm leading-6 text-slate-300">{step}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
+              <h2 className="text-xl font-black">Contract Notes</h2>
+              <div className="mt-4 grid gap-4 text-sm leading-6 text-slate-300">
+                <p className="flex gap-3">
+                  <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-violet-300" />
+                  The current IDL uses the classic SPL Token program, so this launchpad creates Tokenkeg mints.
+                </p>
+                <p className="flex gap-3">
+                  <ImageIcon className="mt-0.5 h-5 w-5 shrink-0 text-violet-300" />
+                  Image and JSON metadata are uploaded to Pinata, but this contract does not store metadata on-chain.
+                </p>
+                <p className="flex gap-3">
+                  <Zap className="mt-0.5 h-5 w-5 shrink-0 text-violet-300" />
+                  Amounts use 9 decimals and are converted to raw token units before Anchor calls.
+                </p>
+              </div>
+            </div>
+          </aside>
+        </section>
+      </div>
     </div>
   );
 }

@@ -1,111 +1,198 @@
 "use client";
 
 import React from "react";
-import { GalleryVerticalEnd, ImagePlus, Store, WalletCards } from "lucide-react";
+import {
+  Activity,
+  BadgePlus,
+  Boxes,
+  Compass,
+  Flame,
+  Gem,
+  Heart,
+  ImagePlus,
+  ListPlus,
+  PlusCircle,
+  Star,
+  TrendingUp,
+  WalletCards,
+} from "lucide-react";
 
 interface HeaderProps {
   activeTab: "mint" | "collection" | "marketplace";
   setActiveTab: (tab: "mint" | "collection" | "marketplace") => void;
+  activeMarketView: "explore" | "trending" | "top" | "new";
+  setActiveMarketView: (view: "explore" | "trending" | "top" | "new") => void;
+  showWatchlistOnly: boolean;
+  setShowWatchlistOnly: (value: boolean) => void;
   listedNFTsCount: number;
   nftsCount: number;
 }
 
-const tabs = [
+type MarketView = "explore" | "trending" | "top" | "new";
+type TabName = "mint" | "collection" | "marketplace";
+type NavItem = {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  tab?: TabName;
+  marketView?: MarketView;
+  watchlist?: boolean;
+};
+type NavGroup = {
+  title: string;
+  items: NavItem[];
+};
+
+const navGroups: NavGroup[] = [
   {
-    id: "mint" as const,
-    label: "Mint",
-    description: "Create and list",
-    icon: ImagePlus,
+    title: "Marketplace",
+    items: [
+      { label: "Explore", icon: Compass, tab: "marketplace" as const, marketView: "explore" as const },
+      { label: "Trending", icon: Flame, tab: "marketplace" as const, marketView: "trending" as const },
+      { label: "Top", icon: Star, tab: "marketplace" as const, marketView: "top" as const },
+      { label: "New", icon: PlusCircle, tab: "marketplace" as const, marketView: "new" as const },
+    ],
   },
   {
-    id: "marketplace" as const,
-    label: "Market",
-    description: "Browse listings",
-    icon: Store,
+    title: "Collections",
+    items: [
+      { label: "All Collections", icon: Boxes, tab: "marketplace" as const, marketView: "explore" as const },
+      { label: "My Collections", icon: WalletCards, tab: "collection" as const },
+      { label: "Create Collection", icon: BadgePlus, tab: "mint" as const },
+    ],
   },
   {
-    id: "collection" as const,
-    label: "Collection",
-    description: "Manage wallet",
-    icon: WalletCards,
+    title: "Create",
+    items: [
+      { label: "Mint NFT", icon: ImagePlus, tab: "mint" as const },
+      { label: "List NFT", icon: ListPlus, tab: "collection" as const },
+    ],
+  },
+  {
+    title: "Account",
+    items: [
+      { label: "My NFTs", icon: Gem, tab: "collection" as const },
+      { label: "Activity", icon: Activity },
+      { label: "Watchlist", icon: Heart, tab: "marketplace" as const, watchlist: true },
+    ],
   },
 ];
 
 export default function Header({
   activeTab,
   setActiveTab,
+  activeMarketView,
+  setActiveMarketView,
+  showWatchlistOnly,
+  setShowWatchlistOnly,
   listedNFTsCount,
   nftsCount,
 }: HeaderProps) {
+  const scrollToMarketplaceListings = () => {
+    window.requestAnimationFrame(() => {
+      window.setTimeout(() => {
+        document
+          .getElementById("marketplace-listings")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 0);
+    });
+  };
+
   return (
-    <header className="mb-8">
-      <div className="mb-6 flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-950 text-white">
-            <GalleryVerticalEnd className="h-6 w-6" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-              NFT Studio
-            </p>
-            <h2 className="text-2xl font-black tracking-tight text-slate-950">
-              Mint, market, and manage
-            </h2>
-          </div>
-        </div>
+    <aside className="space-y-7 xl:sticky xl:top-28">
+      {navGroups.map((group) => (
+        <section key={group.title}>
+          <p className="mb-3 px-1 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+            {group.title}
+          </p>
+          <div className="grid gap-2">
+            {group.items.map((item) => {
+              const Icon = item.icon;
+              const isActive = item.watchlist
+                ? activeTab === "marketplace" && showWatchlistOnly
+                : item.marketView
+                ? activeTab === "marketplace" && activeMarketView === item.marketView
+                : item.tab === activeTab;
 
-        <div className="grid grid-cols-2 gap-3 sm:flex">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Listings
-            </p>
-            <p className="text-xl font-black text-slate-950">{listedNFTsCount}</p>
-          </div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Owned
-            </p>
-            <p className="text-xl font-black text-slate-950">{nftsCount}</p>
-          </div>
-        </div>
-      </div>
+              return (
+                <button
+                  key={item.label}
+                  onClick={() => {
+                    if (item.watchlist) {
+                      setActiveTab("marketplace");
+                      setActiveMarketView("explore");
+                      setShowWatchlistOnly(true);
+                      scrollToMarketplaceListings();
+                      return;
+                    }
 
-      <div className="grid gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm sm:grid-cols-3">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
+                    if (item.marketView) {
+                      setActiveTab("marketplace");
+                      setActiveMarketView(item.marketView);
+                      setShowWatchlistOnly(false);
+                      scrollToMarketplaceListings();
+                      return;
+                    }
 
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-left transition ${
-                isActive
-                  ? "bg-slate-950 text-white shadow-sm"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
-              }`}
-            >
-              <span
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                  isActive ? "bg-white/10" : "bg-slate-100"
-                }`}
-              >
-                <Icon className="h-5 w-5" />
-              </span>
-              <span>
-                <span className="block text-sm font-bold">{tab.label}</span>
-                <span
-                  className={`block text-xs ${
-                    isActive ? "text-slate-300" : "text-slate-500"
+                    if (item.tab) setActiveTab(item.tab);
+                  }}
+                  className={`flex h-10 items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold transition ${
+                    isActive
+                      ? "bg-gradient-to-r from-violet-600 to-fuchsia-700 text-white shadow-[0_14px_34px_rgba(126,34,206,0.32)]"
+                      : "text-slate-400 hover:bg-white/[0.06] hover:text-white"
                   }`}
                 >
-                  {tab.description}
-                </span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </header>
+                  <span
+                    className={`flex h-6 w-6 items-center justify-center rounded-md border ${
+                      isActive
+                        ? "border-white/20 bg-white/10"
+                        : "border-white/10 bg-white/[0.04]"
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                  </span>
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+
+      <section className="rounded-xl border border-white/10 bg-white/[0.04] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-sm font-black text-white">Live Floor Tracker</h3>
+          <TrendingUp className="h-4 w-4 text-emerald-300" />
+        </div>
+        <div className="space-y-4 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-2 font-bold text-white">
+              <span className="h-7 w-7 rounded-lg bg-gradient-to-br from-cyan-400 to-violet-600" />
+              $157.23
+            </span>
+            <span className="text-emerald-300">+2.45%</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-2 font-bold text-white">
+              <span className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-400 to-indigo-700" />
+              {listedNFTsCount} listed
+            </span>
+            <span className="text-slate-400">Live</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-2 font-bold text-white">
+              <span className="h-7 w-7 rounded-lg bg-gradient-to-br from-orange-300 to-amber-700" />
+              {nftsCount} owned
+            </span>
+            <span className="text-emerald-300">Wallet</span>
+          </div>
+        </div>
+        <button
+          onClick={() => setActiveTab("marketplace")}
+          className="mt-5 w-full text-right text-sm font-bold text-fuchsia-300"
+        >
+          View All
+        </button>
+      </section>
+    </aside>
   );
 }

@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///home/aditya/Projects/NFTMINT/app/frontend/app/providers.tsx"],"sourcesContent":["\"use client\";\n\nimport { ReactNode, useMemo } from \"react\";\nimport { ConnectionProvider, WalletProvider } from \"@solana/wallet-adapter-react\";\nimport { WalletModalProvider } from \"@solana/wallet-adapter-react-ui\";\nimport { PhantomWalletAdapter } from \"@solana/wallet-adapter-wallets\";\n\nexport default function Providers({ children }: { children: ReactNode }) {\n  const wallets = useMemo(() => [new PhantomWalletAdapter()], []);\n\n  return (\n    <ConnectionProvider endpoint=\"https://api.devnet.solana.com\">\n      <WalletProvider wallets={wallets} autoConnect>\n        <WalletModalProvider>{children}</WalletModalProvider>\n      </WalletProvider>\n    </ConnectionProvider>\n  );\n}\n"],"names":[],"mappings":";;;;;AAEA;AACA;AAAA;AACA;AACA;;;AALA;;;;;AAOe,SAAS,UAAU,EAAE,QAAQ,EAA2B;;IACrE,MAAM,UAAU,IAAA,2LAAO;sCAAC,IAAM;gBAAC,IAAI,+NAAoB;aAAG;qCAAE,EAAE;IAE9D,qBACE,gNAAC,sOAAkB;QAAC,UAAS;kBAC3B,cAAA,gNAAC,8NAAc;YAAC,SAAS;YAAS,WAAW;sBAC3C,cAAA,gNAAC,8OAAmB;0BAAE;;;;;;;;;;;;;;;;AAI9B;GAVwB;KAAA"}}]
+}

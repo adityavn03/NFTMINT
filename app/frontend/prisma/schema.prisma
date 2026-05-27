@@ -1,0 +1,125 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x", "windows"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DropStatus {
+  UPCOMING
+  LIVE
+  ENDED
+}
+
+model SellerProfile {
+  walletAddress String   @id
+  displayName   String?
+  avatarUrl     String?
+  verified      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sales MarketplaceSale[] @relation("SellerSales")
+
+  @@index([verified])
+}
+
+model NftCollection {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  imageUrl    String?
+  floorPrice  Decimal  @default(0) @db.Decimal(18, 9)
+  itemCount   Int      @default(0)
+  verified    Boolean  @default(false)
+  isFeatured  Boolean  @default(false)
+  rank        Int      @default(999)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  drops NftDrop[]
+  sales MarketplaceSale[]
+
+  @@index([isFeatured, rank])
+  @@index([floorPrice])
+}
+
+model NftDrop {
+  id           String     @id @default(cuid())
+  slug         String     @unique
+  collectionId String?
+  name         String
+  creator      String
+  description  String?
+  imageUrl     String?
+  hypeLabel    String?
+  mintPrice    Decimal    @default(0) @db.Decimal(18, 9)
+  floorPrice   Decimal    @default(0) @db.Decimal(18, 9)
+  itemCount    Int        @default(0)
+  totalSupply  Int        @default(100)
+  mintedCount  Int        @default(0)
+  blockchain   String     @default("Solana")
+  symbol       String     @default("NNFT")
+  metadataUri  String?
+  attributes   Json?
+  status       DropStatus @default(UPCOMING)
+  startsAt     DateTime?
+  endsAt       DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  collection NftCollection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  mints      NftDropMint[]
+
+  @@index([status, endsAt])
+  @@index([floorPrice])
+  @@index([startsAt, endsAt])
+}
+
+model NftDropMint {
+  id          String   @id @default(cuid())
+  dropId      String
+  walletAddress String
+  mintNumber  Int
+  mintAddress String?
+  txSignature String?
+  metadataUri String?
+  status      String   @default("PENDING")
+  mintedAt    DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  drop NftDrop @relation(fields: [dropId], references: [id], onDelete: Cascade)
+
+  @@unique([dropId, mintNumber])
+  @@index([walletAddress, mintedAt])
+  @@index([dropId, status])
+  @@index([mintAddress])
+}
+
+model MarketplaceSale {
+  id            String   @id @default(cuid())
+  saleKey       String   @unique
+  txSignature   String?  @unique
+  escrowAddress String?
+  mintAddress   String
+  nftName       String
+  imageUrl      String?
+  price         Decimal  @db.Decimal(18, 9)
+  sellerAddress String
+  buyerAddress  String
+  collectionId  String?
+  soldAt        DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  sellerProfile SellerProfile  @relation("SellerSales", fields: [sellerAddress], references: [walletAddress], onDelete: Cascade)
+  collection    NftCollection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+
+  @@index([sellerAddress, soldAt])
+  @@index([soldAt])
+  @@index([collectionId])
+  @@index([mintAddress])
+}

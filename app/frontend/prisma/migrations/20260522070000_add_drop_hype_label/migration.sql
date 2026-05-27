@@ -1,0 +1,2 @@
+ALTER TABLE "NftDrop"
+  ADD COLUMN IF NOT EXISTS "hypeLabel" TEXT;

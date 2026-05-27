@@ -13,7 +13,9 @@ import { percentAmount } from "@metaplex-foundation/umi";
 import { generateSigner } from "@metaplex-foundation/umi";
 
 //design and component proping
-import MarketplaceTab from "@/NFTLOGIC_SUBMODULE/MarketplaceTab/page";
+import MarketplaceTab, {
+  MarketplaceSidePanel,
+} from "@/NFTLOGIC_SUBMODULE/MarketplaceTab/page";
 import CollectionTab from "@/NFTLOGIC_SUBMODULE/CollectionTab/page";
 import MintTab from "@/NFTLOGIC_SUBMODULE/MintTab/page";
 import Header from "@/NFTLOGIC_SUBMODULE/Layout/page";
@@ -52,7 +54,9 @@ export default function NFTMarketplace() {
   const { publicKey } = useWallet();
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<"mint" | "collection" | "marketplace">("mint");
+  const [activeTab, setActiveTab] = useState<"mint" | "collection" | "marketplace">("marketplace");
+  const [activeMarketView, setActiveMarketView] = useState<"explore" | "trending" | "top" | "new">("explore");
+  const [showWatchlistOnly, setShowWatchlistOnly] = useState(false);
 
   // NFT Metadata
   const [name, setName] = useState("");
@@ -398,6 +402,28 @@ export default function NFTMarketplace() {
 
     console.log("NFT Purchased TX:", result.tx);
 
+    const mintAddress = listing.mintAddress || listing.mint;
+    await fetch("/api/marketplace/sales", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        txSignature: result.tx,
+        escrowAddress: listing.escrowAddress,
+        mintAddress,
+        nftName: listing.name,
+        imageUrl: listing.image,
+        price: listing.price,
+        sellerAddress: listing.seller,
+        buyerAddress: wallet.publicKey.toString(),
+      }),
+    }).catch((recordError) => {
+      console.error("Failed to record marketplace sale:", recordError);
+    });
+
+    window.dispatchEvent(new Event("marketplace-analytics-updated"));
+
     setStatus("NFT purchased successfully.");
 
     // Refresh marketplace
@@ -498,69 +524,89 @@ const handleListNFT = async (mintAddress: string, priceSOL: string) => {
   ===================================================== */
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl">
+    <main className="min-h-screen bg-[#020412] px-4 py-6 text-white sm:px-6 lg:px-8">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_72%_8%,rgba(88,28,135,0.34),transparent_32%),radial-gradient(circle_at_26%_78%,rgba(14,165,233,0.12),transparent_25%),linear-gradient(180deg,#020412_0%,#050617_45%,#020412_100%)]" />
+      <div className="pointer-events-none fixed inset-0 opacity-35 [background-image:linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] [background-size:72px_72px]" />
 
+      <div className="relative mx-auto grid max-w-[100rem] gap-5 xl:grid-cols-[13rem_minmax(0,1fr)_16rem]">
         <Header
           activeTab={activeTab}
           setActiveTab={setActiveTab}
+          activeMarketView={activeMarketView}
+          setActiveMarketView={setActiveMarketView}
+          showWatchlistOnly={showWatchlistOnly}
+          setShowWatchlistOnly={setShowWatchlistOnly}
           listedNFTsCount={listedNFTs.length}
           nftsCount={nfts.length}
         />
 
-        {/* Mint & List Tab */}
-        {activeTab === "mint" && (
-          <MintTab
-            name={name}
-            description={description}
-            price={price}
-            attributes={attributes}
-            loading={loading}
-            status={status}
-            error={error}
-            mintedNFT={mintedNFT}
-            walletConnected={wallet.connected}
-            setName={setName}
-            setDescription={setDescription}
-            setPrice={setPrice}
-            setImageFile={setImageFile}
-            updateAttribute={updateAttribute}
-            addAttribute={addAttribute}
-            handleMintAndList={handleMintAndList}
-          />
-        )}
+        <section className="min-w-0">
+          {activeTab === "mint" && (
+            <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4 text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+              <MintTab
+                name={name}
+                description={description}
+                price={price}
+                attributes={attributes}
+                loading={loading}
+                status={status}
+                error={error}
+                mintedNFT={mintedNFT}
+                walletConnected={wallet.connected}
+                setName={setName}
+                setDescription={setDescription}
+                setPrice={setPrice}
+                setImageFile={setImageFile}
+                updateAttribute={updateAttribute}
+                addAttribute={addAttribute}
+                handleMintAndList={handleMintAndList}
+              />
+            </div>
+          )}
 
-        {activeTab === "marketplace" && (
-          <MarketplaceTab
-            listedNFTs={listedNFTs}
-            loadingMarketplace={loadingMarketplace}
-            loadMarketplace={loadMarketplace}
-            handleBuyNFT={handleBuyNFT}
-            handleCancelListing={handleCancelListing}
-            publicKey={publicKey?.toString()}
-            walletConnected={wallet.connected}
-            loading={loading}
-            cancelingListing={cancelingListing}
-          />
-        )}
+          {activeTab === "marketplace" && (
+            <MarketplaceTab
+              listedNFTs={listedNFTs}
+              loadingMarketplace={loadingMarketplace}
+              loadMarketplace={loadMarketplace}
+              handleBuyNFT={handleBuyNFT}
+              handleCancelListing={handleCancelListing}
+              publicKey={publicKey?.toString()}
+              walletConnected={wallet.connected}
+              wallet={wallet}
+              pinataJwt={PINATA_JWT}
+              marketView={activeMarketView}
+              showWatchlistOnly={showWatchlistOnly}
+              setShowWatchlistOnly={setShowWatchlistOnly}
+              loading={loading}
+              cancelingListing={cancelingListing}
+            />
+          )}
 
-        {activeTab === "collection" && (
-          <CollectionTab
-            nfts={nfts}
-            loadingNfts={loadingNfts}
-            publicKey={publicKey?.toString()}
-            listingNFT={listingNFT}
-            listPrice={listPrice}
-            loading={loading}
-            setListingNFT={setListingNFT}
-            setListPrice={setListPrice}
-            handleListNFT={handleListNFT}
-            handleImageError={handleImageError}
-            getNFTImage={getNFTImage}
-            getNFTName={getNFTName}
-            nftMetadata={nftMetadata}
-          />
-        )}
+          {activeTab === "collection" && (
+            <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4 text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+              <CollectionTab
+                nfts={nfts}
+                loadingNfts={loadingNfts}
+                publicKey={publicKey?.toString()}
+                listingNFT={listingNFT}
+                listPrice={listPrice}
+                loading={loading}
+                setListingNFT={setListingNFT}
+                setListPrice={setListPrice}
+                handleListNFT={handleListNFT}
+                handleImageError={handleImageError}
+                getNFTImage={getNFTImage}
+                getNFTName={getNFTName}
+                nftMetadata={nftMetadata}
+              />
+            </div>
+          )}
+        </section>
+
+        <div className="hidden space-y-5 xl:block xl:sticky xl:top-28 xl:self-start">
+          <MarketplaceSidePanel />
+        </div>
       </div>
     </main>
   );

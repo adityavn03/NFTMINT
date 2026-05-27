@@ -60,11 +60,11 @@
           "signer": true
         },
         {
-          "name": "mint_ata",
+          "name": "maker_ata",
           "writable": true
         },
         {
-          "name": "escrow_make_ata",
+          "name": "escrow_maker_ata",
           "writable": true,
           "pda": {
             "seeds": [
@@ -172,16 +172,234 @@
       "args": []
     },
     {
-      "name": "deposit_taker",
+      "name": "execute",
       "discriminator": [
-        201,
+        130,
+        221,
+        242,
+        154,
+        13,
+        193,
+        189,
+        29
+      ],
+      "accounts": [
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "escrow.maker",
+                "account": "Escrow"
+              },
+              {
+                "kind": "account",
+                "path": "escrow.mint_maker",
+                "account": "Escrow"
+              },
+              {
+                "kind": "account",
+                "path": "escrow.escrow_id",
+                "account": "Escrow"
+              }
+            ]
+          }
+        },
+        {
+          "name": "maker",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "taker",
+          "writable": true
+        },
+        {
+          "name": "maker_receive_ata",
+          "writable": true
+        },
+        {
+          "name": "taker_receive_ata",
+          "writable": true
+        },
+        {
+          "name": "escrow_maker_ata",
+          "writable": true
+        },
+        {
+          "name": "escrow_taker_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "inizialise_escrow",
+      "discriminator": [
+        81,
+        167,
+        225,
+        90,
+        105,
+        44,
+        30,
+        141
+      ],
+      "accounts": [
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "maker"
+              },
+              {
+                "kind": "account",
+                "path": "mint_maker"
+              },
+              {
+                "kind": "arg",
+                "path": "escrow_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "maker",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mint_maker"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "escrow_id",
+          "type": "u64"
+        },
+        {
+          "name": "amount_maker",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "reject_offer",
+      "discriminator": [
+        154,
+        107,
+        238,
         8,
-        155,
-        255,
-        245,
-        56,
-        72,
-        24
+        171,
+        64,
+        222,
+        56
+      ],
+      "accounts": [
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "escrow.maker",
+                "account": "Escrow"
+              },
+              {
+                "kind": "account",
+                "path": "escrow.mint_maker",
+                "account": "Escrow"
+              },
+              {
+                "kind": "account",
+                "path": "escrow.escrow_id",
+                "account": "Escrow"
+              }
+            ]
+          }
+        },
+        {
+          "name": "maker",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "taker",
+          "writable": true
+        },
+        {
+          "name": "taker_ata",
+          "writable": true
+        },
+        {
+          "name": "escrow_taker_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "take_escrow",
+      "discriminator": [
+        7,
+        228,
+        175,
+        217,
+        157,
+        122,
+        44,
+        79
       ],
       "accounts": [
         {
@@ -224,7 +442,10 @@
           "signer": true
         },
         {
-          "name": "mint_taker_ata",
+          "name": "mint_taker"
+        },
+        {
+          "name": "taker_ata",
           "writable": true
         },
         {
@@ -318,9 +539,6 @@
           }
         },
         {
-          "name": "mint_taker"
-        },
-        {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
@@ -333,155 +551,7 @@
           "address": "11111111111111111111111111111111"
         }
       ],
-      "args": []
-    },
-    {
-      "name": "execute",
-      "discriminator": [
-        130,
-        221,
-        242,
-        154,
-        13,
-        193,
-        189,
-        29
-      ],
-      "accounts": [
-        {
-          "name": "escrow",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  115,
-                  99,
-                  114,
-                  111,
-                  119
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "escrow.maker",
-                "account": "Escrow"
-              },
-              {
-                "kind": "account",
-                "path": "escrow.mint_maker",
-                "account": "Escrow"
-              },
-              {
-                "kind": "account",
-                "path": "escrow.escrow_id",
-                "account": "Escrow"
-              }
-            ]
-          }
-        },
-        {
-          "name": "maker",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "make_ata",
-          "writable": true
-        },
-        {
-          "name": "taker_ata",
-          "writable": true
-        },
-        {
-          "name": "escrow_maker_ata",
-          "writable": true
-        },
-        {
-          "name": "escrow_take_ata",
-          "writable": true
-        },
-        {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "inizialise_escrow",
-      "discriminator": [
-        81,
-        167,
-        225,
-        90,
-        105,
-        44,
-        30,
-        141
-      ],
-      "accounts": [
-        {
-          "name": "escrow",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  115,
-                  99,
-                  114,
-                  111,
-                  119
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "maker"
-              },
-              {
-                "kind": "account",
-                "path": "mint_maker"
-              },
-              {
-                "kind": "arg",
-                "path": "escrow_id"
-              }
-            ]
-          }
-        },
-        {
-          "name": "maker",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "taker"
-        },
-        {
-          "name": "mint_maker"
-        },
-        {
-          "name": "mint_taker"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
       "args": [
-        {
-          "name": "escrow_id",
-          "type": "u64"
-        },
-        {
-          "name": "amount_maker",
-          "type": "u64"
-        },
         {
           "name": "amount_taker",
           "type": "u64"
@@ -507,13 +577,58 @@
   "errors": [
     {
       "code": 6000,
+      "name": "InvalidAmount",
+      "msg": "Invalid amount"
+    },
+    {
+      "code": 6001,
+      "name": "SameMint",
+      "msg": "Maker and taker mints cannot be the same"
+    },
+    {
+      "code": 6002,
       "name": "AlreadyDeposited",
       "msg": "Tokens are already deposited"
     },
     {
-      "code": 6001,
+      "code": 6003,
+      "name": "MakerNotDeposited",
+      "msg": "Maker has not deposited yet"
+    },
+    {
+      "code": 6004,
+      "name": "AlreadyTaken",
+      "msg": "Escrow has already been taken"
+    },
+    {
+      "code": 6005,
+      "name": "MakerCannotBeTaker",
+      "msg": "Maker cannot also be taker"
+    },
+    {
+      "code": 6006,
       "name": "EscrowNotReady",
-      "msg": "Escrow not ready"
+      "msg": "Escrow is not ready"
+    },
+    {
+      "code": 6007,
+      "name": "TakerMissing",
+      "msg": "Taker is missing"
+    },
+    {
+      "code": 6008,
+      "name": "Unauthorized",
+      "msg": "Unauthorized account"
+    },
+    {
+      "code": 6009,
+      "name": "InvalidMint",
+      "msg": "Invalid mint"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidTokenAccount",
+      "msg": "Invalid token account"
     }
   ],
   "types": [

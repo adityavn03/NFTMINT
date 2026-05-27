@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev --name init_marketplace_analytics",
+    "prisma:deploy": "prisma migrate deploy"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",
@@ -22,6 +25,7 @@
     "@solana/web3.js": "^1.98.4",
     "framer-motion": "^12.38.0",
     "lucide-react": "^0.563.0",
+    "@prisma/client": "^6.19.0",
     "next": "16.1.0",
     "react": "19.2.3",
     "react-dom": "19.2.3"
@@ -33,6 +37,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.0",
+    "prisma": "^6.19.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
