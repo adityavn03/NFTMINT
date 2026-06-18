@@ -26,15 +26,15 @@ import {
 import Customlogic from "../TokenSwap/page";
 import NFTMarketplace from "../nft_logic/page";
 
-type ActiveView = "dashboard" | "swap" | "nft";
+type ActiveView = "dashboard" | "swap" | "nft" | "how" | "docs" | "stats";
 
 const navItems = [
   { label: "Home", view: "dashboard" as const },
   { label: "Swap", view: "swap" as const },
   { label: "NFT Market", view: "nft" as const },
-  { label: "How it Works" },
-  { label: "Docs" },
-  { label: "Stats" },
+  { label: "How it Works", view: "how" as const },
+  { label: "Docs", view: "docs" as const },
+  { label: "Stats", view: "stats" as const },
 ];
 
 const metrics = [
@@ -64,6 +64,66 @@ const benefits = [
     description: "Empowering creators with royalty and ownership flows",
     icon: Store,
   },
+];
+
+const workflowSteps = [
+  {
+    title: "Connect Wallet",
+    description: "Use a Solana wallet on devnet to create tokens, fund escrows, mint NFTs, and buy listings.",
+    icon: Wallet,
+  },
+  {
+    title: "Create or Select Assets",
+    description: "Launch a new SPL token with metadata, choose an existing wallet token, or mint an NFT for the market.",
+    icon: Sparkles,
+  },
+  {
+    title: "Lock Value in Escrow",
+    description: "Makers initialize a trade and deposit tokens into a PDA-owned vault controlled by the program.",
+    icon: LockKeyhole,
+  },
+  {
+    title: "Join and Settle",
+    description: "Takers choose a different SPL token, deposit their offer, and the maker executes or rejects the swap.",
+    icon: Repeat2,
+  },
+];
+
+const docSections = [
+  {
+    title: "Token Swap",
+    points: [
+      "Escrows are PDA accounts seeded by maker, maker mint, and escrow id.",
+      "Makers deposit the offered SPL token before takers can join.",
+      "Takers must offer a different SPL token mint.",
+      "The maker reviews the offer, then executes or rejects it.",
+    ],
+  },
+  {
+    title: "Token Launchpad",
+    points: [
+      "Creates classic Tokenkeg SPL mints so the escrow program can transfer them.",
+      "Uploads image and JSON metadata to Pinata/IPFS.",
+      "Creates Metaplex metadata accounts for wallet-readable name, symbol, and image.",
+      "Wallet-held SPL tokens can be selected without mint authority.",
+    ],
+  },
+  {
+    title: "NFT Market",
+    points: [
+      "Mint NFTs with metadata and image assets.",
+      "List owned NFTs through the marketplace escrow program.",
+      "Buy active listings with SOL on devnet.",
+      "Cancel listings you created before sale.",
+    ],
+  },
+];
+
+const statCards = [
+  { label: "Escrow Swaps", value: "32", detail: "active devnet escrows", icon: Repeat2 },
+  { label: "Listed NFTs", value: "45K+", detail: "marketplace inventory", icon: Boxes },
+  { label: "Volume", value: "1.2M+", detail: "simulated SOL volume", icon: CircleDollarSign },
+  { label: "Users", value: "12K+", detail: "active traders", icon: Users },
 ];
 
 function WalletButton() {
@@ -120,20 +180,13 @@ function ShellHeader({
           {navItems.map((item) => {
             const isActive = item.view === activeView;
 
-            return item.view ? (
+            return (
               <button
                 key={item.label}
                 onClick={() => onNavigate(item.view)}
                 className={`transition hover:text-fuchsia-300 ${
                   isActive ? "text-fuchsia-300" : "text-white"
                 }`}
-              >
-                {item.label}
-              </button>
-            ) : (
-              <button
-                key={item.label}
-                className="text-white transition hover:text-fuchsia-300"
               >
                 {item.label}
               </button>
@@ -161,7 +214,7 @@ function ShellHeader({
               <button
                 key={item.label}
                 onClick={() => {
-                  if (item.view) onNavigate(item.view);
+                  onNavigate(item.view);
                   setMenuOpen(false);
                 }}
                 className={`rounded-lg px-3 py-2 text-left text-sm font-bold ${
@@ -430,6 +483,231 @@ function Dashboard({ onNavigate }: { onNavigate: (view: ActiveView) => void }) {
   );
 }
 
+function HowItWorksView({ onNavigate }: { onNavigate: (view: ActiveView) => void }) {
+  return (
+    <main className="relative mx-auto w-[min(88rem,calc(100%-2rem))] pb-12 pt-10">
+      <section className="grid gap-8 rounded-2xl border border-white/10 bg-white/[0.04] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] lg:grid-cols-[0.9fr_1.1fr] lg:p-8">
+        <div>
+          <p className="mb-4 text-sm font-black uppercase tracking-[0.25em] text-violet-300">
+            How It Works
+          </p>
+          <h1 className="text-4xl font-black leading-tight text-white sm:text-6xl">
+            One wallet, two asset flows, escrow settlement.
+          </h1>
+          <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-300">
+            The app combines SPL token escrow swaps and NFT marketplace actions behind one wallet-first interface.
+          </p>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <button
+              onClick={() => onNavigate("swap")}
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-600 px-6 text-sm font-black text-white"
+            >
+              <Repeat2 className="h-4 w-4" />
+              Start Swap
+            </button>
+            <button
+              onClick={() => onNavigate("nft")}
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-6 text-sm font-black text-white transition hover:border-violet-300/50"
+            >
+              <Store className="h-4 w-4" />
+              Open Market
+            </button>
+          </div>
+        </div>
+
+        <div className="grid gap-4">
+          {workflowSteps.map((step, index) => {
+            const Icon = step.icon;
+
+            return (
+              <div
+                key={step.title}
+                className="grid gap-4 rounded-xl border border-white/10 bg-[#090b1f]/75 p-5 sm:grid-cols-[auto_1fr]"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-violet-500/20 text-violet-200">
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="text-sm font-black text-violet-200">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-white">{step.title}</h2>
+                  <p className="mt-2 leading-7 text-slate-300">{step.description}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="mt-6 grid gap-5 md:grid-cols-3">
+        {[
+          ["Maker", "Creates escrow terms and deposits their SPL token."],
+          ["Taker", "Chooses a different SPL token and deposits an offer."],
+          ["Program", "Transfers both vault balances atomically when maker executes."],
+        ].map(([title, description]) => (
+          <div
+            key={title}
+            className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+          >
+            <h3 className="text-lg font-black text-white">{title}</h3>
+            <p className="mt-3 leading-6 text-slate-300">{description}</p>
+          </div>
+        ))}
+      </section>
+    </main>
+  );
+}
+
+function DocsView({ onNavigate }: { onNavigate: (view: ActiveView) => void }) {
+  return (
+    <main className="relative mx-auto w-[min(88rem,calc(100%-2rem))] pb-12 pt-10">
+      <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] lg:p-8">
+        <p className="mb-4 text-sm font-black uppercase tracking-[0.25em] text-violet-300">
+          Docs
+        </p>
+        <div className="grid gap-6 lg:grid-cols-[0.78fr_1.22fr]">
+          <div>
+            <h1 className="text-4xl font-black leading-tight text-white sm:text-6xl">
+              Build notes for the token swap and NFT market.
+            </h1>
+            <p className="mt-5 text-lg leading-8 text-slate-300">
+              A compact reference for the current devnet implementation, the IDL-driven frontend, and the asset flows.
+            </p>
+            <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+              <button
+                onClick={() => onNavigate("swap")}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-600 px-5 text-sm font-black text-white"
+              >
+                <Repeat2 className="h-4 w-4" />
+                Swap UI
+              </button>
+              <button
+                onClick={() => onNavigate("nft")}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-5 text-sm font-black text-white"
+              >
+                <GalleryVerticalEnd className="h-4 w-4" />
+                NFT Market
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-4">
+            {docSections.map((section) => (
+              <article
+                key={section.title}
+                className="rounded-xl border border-white/10 bg-[#090b1f]/75 p-5"
+              >
+                <h2 className="text-xl font-black text-white">{section.title}</h2>
+                <div className="mt-4 grid gap-3">
+                  {section.points.map((point) => (
+                    <div key={point} className="flex gap-3 text-sm leading-6 text-slate-300">
+                      <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+                      <span>{point}</span>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function StatsView({ onNavigate }: { onNavigate: (view: ActiveView) => void }) {
+  return (
+    <main className="relative mx-auto w-[min(88rem,calc(100%-2rem))] pb-12 pt-10">
+      <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] lg:p-8">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="mb-4 text-sm font-black uppercase tracking-[0.25em] text-violet-300">
+              Stats
+            </p>
+            <h1 className="text-4xl font-black text-white sm:text-6xl">
+              Protocol activity snapshot.
+            </h1>
+            <p className="mt-5 max-w-3xl text-lg leading-8 text-slate-300">
+              Track the main surfaces of the app: escrow swaps, NFT listings, wallet activity, and marketplace volume.
+            </p>
+          </div>
+          <button
+            onClick={() => onNavigate("swap")}
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-600 px-6 text-sm font-black text-white"
+          >
+            <Zap className="h-4 w-4" />
+            Open Swap
+          </button>
+        </div>
+
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {statCards.map((stat) => {
+            const Icon = stat.icon;
+
+            return (
+              <div key={stat.label} className="rounded-xl border border-white/10 bg-[#090b1f]/75 p-5">
+                <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-violet-500/20 text-violet-200">
+                  <Icon className="h-5 w-5" />
+                </span>
+                <p className="mt-5 text-sm font-bold text-slate-400">{stat.label}</p>
+                <p className="mt-2 text-4xl font-black text-white">{stat.value}</p>
+                <p className="mt-2 text-sm text-slate-400">{stat.detail}</p>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-6 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-xl border border-white/10 bg-[#090b1f]/75 p-5">
+            <h2 className="text-xl font-black text-white">Weekly Flow</h2>
+            <div className="mt-6 grid gap-4">
+              {[
+                ["Swaps", "86%"],
+                ["NFT Listings", "64%"],
+                ["Mints", "52%"],
+                ["Wallet Actions", "78%"],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <div className="mb-2 flex items-center justify-between text-sm font-bold">
+                    <span className="text-slate-300">{label}</span>
+                    <span className="text-violet-200">{value}</span>
+                  </div>
+                  <div className="h-3 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-600"
+                      style={{ width: value }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-[#090b1f]/75 p-5">
+            <h2 className="text-xl font-black text-white">Network Health</h2>
+            <div className="mt-5 grid gap-4">
+              {[
+                ["Cluster", "Solana devnet"],
+                ["Swap Program", "IDL connected"],
+                ["NFT Program", "Marketplace active"],
+                ["Metadata", "Pinata + Metaplex"],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-center justify-between gap-4 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3">
+                  <span className="text-sm text-slate-400">{label}</span>
+                  <span className="text-sm font-black text-white">{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
 export default function Main() {
   const [activeView, setActiveView] = useState<ActiveView>("dashboard");
 
@@ -461,13 +739,33 @@ export default function Main() {
     );
   }
 
+  const renderView = () => {
+    if (activeView === "how") {
+      return <HowItWorksView onNavigate={setActiveView} />;
+    }
+
+    if (activeView === "docs") {
+      return <DocsView onNavigate={setActiveView} />;
+    }
+
+    if (activeView === "stats") {
+      return <StatsView onNavigate={setActiveView} />;
+    }
+
+    return <Dashboard onNavigate={setActiveView} />;
+  };
+
   return (
     <div className="min-h-screen overflow-hidden bg-[#020412] text-white">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_78%_14%,rgba(88,28,135,0.42),transparent_34%),radial-gradient(circle_at_30%_78%,rgba(37,99,235,0.18),transparent_28%),linear-gradient(180deg,#020412_0%,#050619_44%,#020412_100%)]" />
       <div className="pointer-events-none fixed inset-0 opacity-45 [background-image:linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] [background-size:72px_72px]" />
       <div className="relative">
-        <ShellHeader activeView={activeView} onNavigate={setActiveView} />
-        <Dashboard onNavigate={setActiveView} />
+        <ShellHeader
+          activeView={activeView}
+          onNavigate={setActiveView}
+          onBack={() => setActiveView("dashboard")}
+        />
+        {renderView()}
       </div>
     </div>
   );

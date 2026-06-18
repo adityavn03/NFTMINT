@@ -144,6 +144,15 @@ const getEscrowPda = (maker, mintMaker, escrowId, programId)=>__TURBOPACK__impor
         mintMaker.toBuffer(),
         escrowId.toArrayLike(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$buffer$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Buffer"], "le", 8)
     ], programId)[0];
+const formatActionError = (message)=>{
+    if (message.includes("AccountDidNotDeserialize")) {
+        return "This escrow account is stale or from an older program version. Refresh escrows and select a newly created escrow.";
+    }
+    if (message.includes("SameMint") || message.includes("Maker and taker mints cannot be the same")) {
+        return "Choose a different taker token. The maker token and taker offer token cannot be the same mint.";
+    }
+    return message;
+};
 function EscrowUI() {
     _s();
     const { connection } = (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$wallet$2d$adapter$2d$react$2f$lib$2f$esm$2f$useConnection$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useConnection"])();
@@ -193,8 +202,9 @@ function EscrowUI() {
     ]);
     const escrowClient = program.account;
     const makerEscrows = wallet.publicKey ? escrows.filter((escrow)=>escrow.account.maker.equals(wallet.publicKey)) : [];
-    const joinableEscrows = escrows.filter((escrow)=>escrow.account.depositMaker && !escrow.account.depositTaker && !escrow.account.maker.equals(wallet.publicKey ?? __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$web3$2e$js$2f$lib$2f$index$2e$browser$2e$esm$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["PublicKey"].default));
+    const joinableEscrows = escrows.filter((escrow)=>escrow.account.depositMaker && !escrow.account.depositTaker && escrow.account.taker.toBase58() === ZERO_PUBKEY && !escrow.account.maker.equals(wallet.publicKey ?? __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$web3$2e$js$2f$lib$2f$index$2e$browser$2e$esm$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["PublicKey"].default));
     const activeEscrowCount = escrows.filter((escrow)=>!escrow.account.depositMaker || !escrow.account.depositTaker).length;
+    const selectedOfferUsesSameMint = Boolean(selectedEscrow && takerToken.mintAddress) && selectedEscrow?.account.mintMaker.toBase58() === takerToken.mintAddress;
     const fetchEscrows = async ()=>{
         try {
             const accounts = await escrowClient.escrow.all();
@@ -332,7 +342,7 @@ function EscrowUI() {
         } catch (err) {
             const message = err instanceof Error ? err.message : "Transaction failed";
             console.error(err);
-            setError(message.includes("AccountDidNotDeserialize") ? "This escrow account is stale or from an older program version. Refresh escrows and select a newly created escrow." : message);
+            setError(formatActionError(message));
         } finally{
             setLoading(false);
             setStatus("");
@@ -477,6 +487,9 @@ function EscrowUI() {
                 throw new Error("This escrow already has a taker offer");
             }
             const takerMint = new __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$web3$2e$js$2f$lib$2f$index$2e$browser$2e$esm$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["PublicKey"](takerToken.mintAddress);
+            if (escrowData.mintMaker.equals(takerMint)) {
+                throw new Error("Choose a different taker token. The maker token and taker offer token cannot be the same mint.");
+            }
             const payAta = takerToken.tokenAccountAddress ? new __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$web3$2e$js$2f$lib$2f$index$2e$browser$2e$esm$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["PublicKey"](takerToken.tokenAccountAddress) : await (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$spl$2d$token$2f$lib$2f$esm$2f$state$2f$mint$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["getAssociatedTokenAddress"])(takerMint, wallet.publicKey);
             const payAtaAccount = await connection.getAccountInfo(payAta);
             if (!payAtaAccount) {
@@ -585,12 +598,12 @@ function EscrowUI() {
                                         className: "h-6 w-6"
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 829,
+                                        lineNumber: 850,
                                         columnNumber: 15
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 828,
+                                    lineNumber: 849,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -600,7 +613,7 @@ function EscrowUI() {
                                             children: title
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 832,
+                                            lineNumber: 853,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -608,19 +621,19 @@ function EscrowUI() {
                                             children: copy
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 833,
+                                            lineNumber: 854,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 831,
+                                    lineNumber: 852,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 827,
+                            lineNumber: 848,
                             columnNumber: 11
                         }, this),
                         token.mintAddress && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -630,20 +643,20 @@ function EscrowUI() {
                                     className: "h-4 w-4"
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 838,
+                                    lineNumber: 859,
                                     columnNumber: 15
                                 }, this),
                                 "Token selected"
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 837,
+                            lineNumber: 858,
                             columnNumber: 13
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                    lineNumber: 826,
+                    lineNumber: 847,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -663,7 +676,7 @@ function EscrowUI() {
                                                     children: "Use Coins From Your Wallet"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                    lineNumber: 849,
+                                                    lineNumber: 870,
                                                     columnNumber: 19
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -673,13 +686,13 @@ function EscrowUI() {
                                                     children: "Refresh"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                    lineNumber: 850,
+                                                    lineNumber: 871,
                                                     columnNumber: 19
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 848,
+                                            lineNumber: 869,
                                             columnNumber: 17
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -696,7 +709,7 @@ function EscrowUI() {
                                                                     children: shortenKey(walletToken.mintAddress)
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                    lineNumber: 867,
+                                                                    lineNumber: 888,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -704,13 +717,13 @@ function EscrowUI() {
                                                                     children: walletToken.mintAddress
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                    lineNumber: 870,
+                                                                    lineNumber: 891,
                                                                     columnNumber: 25
                                                                 }, this)
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                            lineNumber: 866,
+                                                            lineNumber: 887,
                                                             columnNumber: 23
                                                         }, this),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -718,24 +731,24 @@ function EscrowUI() {
                                                             children: walletToken.balance
                                                         }, void 0, false, {
                                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                            lineNumber: 874,
+                                                            lineNumber: 895,
                                                             columnNumber: 23
                                                         }, this)
                                                     ]
                                                 }, `${side}-${walletToken.ataAddress}`, true, {
                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                    lineNumber: 860,
+                                                    lineNumber: 881,
                                                     columnNumber: 21
                                                 }, this))
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 858,
+                                            lineNumber: 879,
                                             columnNumber: 17
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 847,
+                                    lineNumber: 868,
                                     columnNumber: 15
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -755,13 +768,13 @@ function EscrowUI() {
                                                     className: "min-h-11 rounded-lg border border-white/10 bg-[#050719]/75 px-4 font-mono text-xs text-white outline-none transition placeholder:text-slate-500 focus:border-violet-300/60 disabled:opacity-50"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                    lineNumber: 886,
+                                                    lineNumber: 907,
                                                     columnNumber: 17
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 884,
+                                            lineNumber: 905,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -773,20 +786,20 @@ function EscrowUI() {
                                                     className: "h-4 w-4"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                    lineNumber: 901,
+                                                    lineNumber: 922,
                                                     columnNumber: 17
                                                 }, this),
                                                 "Use Mint"
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 896,
+                                            lineNumber: 917,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 883,
+                                    lineNumber: 904,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -794,13 +807,13 @@ function EscrowUI() {
                                     children: "You do not need to own the mint authority. You only need a token account with balance when depositing."
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 905,
+                                    lineNumber: 926,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 845,
+                            lineNumber: 866,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -820,13 +833,13 @@ function EscrowUI() {
                                             className: "min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-violet-300/60 disabled:opacity-50"
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 913,
+                                            lineNumber: 934,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 911,
+                                    lineNumber: 932,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -844,19 +857,19 @@ function EscrowUI() {
                                             className: "min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm uppercase text-white outline-none transition placeholder:text-slate-500 focus:border-violet-300/60 disabled:opacity-50"
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 923,
+                                            lineNumber: 944,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 921,
+                                    lineNumber: 942,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 910,
+                            lineNumber: 931,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -874,13 +887,13 @@ function EscrowUI() {
                                     className: "resize-none rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-violet-300/60 disabled:opacity-50"
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 938,
+                                    lineNumber: 959,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 936,
+                            lineNumber: 957,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -899,13 +912,13 @@ function EscrowUI() {
                                     className: "min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-violet-300/60 disabled:opacity-50"
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 950,
+                                    lineNumber: 971,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 948,
+                            lineNumber: 969,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -923,14 +936,14 @@ function EscrowUI() {
                                             onChange: handleImageChange(side)
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 965,
+                                            lineNumber: 986,
                                             columnNumber: 17
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$upload$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Upload$3e$__["Upload"], {
                                             className: "mb-3 h-9 w-9 text-violet-300"
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 972,
+                                            lineNumber: 993,
                                             columnNumber: 17
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -938,7 +951,7 @@ function EscrowUI() {
                                             children: "Upload token artwork"
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 973,
+                                            lineNumber: 994,
                                             columnNumber: 17
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -946,13 +959,13 @@ function EscrowUI() {
                                             children: "PNG or JPG recommended"
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 974,
+                                            lineNumber: 995,
                                             columnNumber: 17
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 964,
+                                    lineNumber: 985,
                                     columnNumber: 15
                                 }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                     className: "relative overflow-hidden rounded-lg border border-white/10 bg-[#080a1d]",
@@ -964,7 +977,7 @@ function EscrowUI() {
                                             }
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 980,
+                                            lineNumber: 1001,
                                             columnNumber: 17
                                         }, this),
                                         !token.mintAddress && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -976,24 +989,24 @@ function EscrowUI() {
                                                 className: "h-5 w-5"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 991,
+                                                lineNumber: 1012,
                                                 columnNumber: 21
                                             }, this)
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 985,
+                                            lineNumber: 1006,
                                             columnNumber: 19
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 979,
+                                    lineNumber: 1000,
                                     columnNumber: 15
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 961,
+                            lineNumber: 982,
                             columnNumber: 11
                         }, this),
                         token.mintAddress && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1007,7 +1020,7 @@ function EscrowUI() {
                                             children: "Selected Mint"
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 1001,
+                                            lineNumber: 1022,
                                             columnNumber: 17
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1018,18 +1031,18 @@ function EscrowUI() {
                                                 className: "h-4 w-4"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1007,
+                                                lineNumber: 1028,
                                                 columnNumber: 19
                                             }, this)
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 1002,
+                                            lineNumber: 1023,
                                             columnNumber: 17
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 1000,
+                                    lineNumber: 1021,
                                     columnNumber: 15
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1037,7 +1050,7 @@ function EscrowUI() {
                                     children: token.mintAddress
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 1010,
+                                    lineNumber: 1031,
                                     columnNumber: 15
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1048,7 +1061,7 @@ function EscrowUI() {
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 1013,
+                                    lineNumber: 1034,
                                     columnNumber: 15
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1065,13 +1078,13 @@ function EscrowUI() {
                                                     className: "h-3.5 w-3.5"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                    lineNumber: 1023,
+                                                    lineNumber: 1044,
                                                     columnNumber: 29
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 1017,
+                                            lineNumber: 1038,
                                             columnNumber: 17
                                         }, this),
                                         token.txSig && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("a", {
@@ -1085,13 +1098,13 @@ function EscrowUI() {
                                                     className: "h-3.5 w-3.5"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                    lineNumber: 1032,
+                                                    lineNumber: 1053,
                                                     columnNumber: 29
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 1026,
+                                            lineNumber: 1047,
                                             columnNumber: 19
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1101,19 +1114,19 @@ function EscrowUI() {
                                             children: "Change Token"
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                            lineNumber: 1035,
+                                            lineNumber: 1056,
                                             columnNumber: 17
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 1016,
+                                    lineNumber: 1037,
                                     columnNumber: 15
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 999,
+                            lineNumber: 1020,
                             columnNumber: 13
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1125,32 +1138,32 @@ function EscrowUI() {
                                     className: "h-4 w-4 animate-spin"
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 1059,
+                                    lineNumber: 1080,
                                     columnNumber: 24
                                 }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$rocket$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Rocket$3e$__["Rocket"], {
                                     className: "h-4 w-4"
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 1059,
+                                    lineNumber: 1080,
                                     columnNumber: 71
                                 }, this),
                                 token.mintAddress ? "Token Launched" : "Launch SPL Token"
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 1046,
+                            lineNumber: 1067,
                             columnNumber: 11
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                    lineNumber: 844,
+                    lineNumber: 865,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-            lineNumber: 825,
+            lineNumber: 846,
             columnNumber: 7
         }, this);
     };
@@ -1174,7 +1187,7 @@ function EscrowUI() {
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 1082,
+                                lineNumber: 1103,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1187,7 +1200,7 @@ function EscrowUI() {
                                         children: formatRawAmount(escrow.account.amountMaker)
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1087,
+                                        lineNumber: 1108,
                                         columnNumber: 15
                                     }, this),
                                     takerJoined ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
@@ -1200,7 +1213,7 @@ function EscrowUI() {
                                                 children: formatRawAmount(escrow.account.amountTaker)
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1093,
+                                                lineNumber: 1114,
                                                 columnNumber: 19
                                             }, this)
                                         ]
@@ -1209,13 +1222,13 @@ function EscrowUI() {
                                         children: " and is waiting for a taker offer"
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1098,
+                                        lineNumber: 1119,
                                         columnNumber: 17
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 1085,
+                                lineNumber: 1106,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1229,7 +1242,7 @@ function EscrowUI() {
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1102,
+                                        lineNumber: 1123,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1240,7 +1253,7 @@ function EscrowUI() {
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1105,
+                                        lineNumber: 1126,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1251,19 +1264,19 @@ function EscrowUI() {
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1108,
+                                        lineNumber: 1129,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 1101,
+                                lineNumber: 1122,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                        lineNumber: 1081,
+                        lineNumber: 1102,
                         columnNumber: 11
                     }, this),
                     mode === "maker" ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1278,14 +1291,14 @@ function EscrowUI() {
                                         className: "h-4 w-4"
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1125,
+                                        lineNumber: 1146,
                                         columnNumber: 17
                                     }, this),
                                     "Reject"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 1116,
+                                lineNumber: 1137,
                                 columnNumber: 15
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1297,20 +1310,20 @@ function EscrowUI() {
                                         className: "h-4 w-4"
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1138,
+                                        lineNumber: 1159,
                                         columnNumber: 17
                                     }, this),
                                     "Execute"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 1128,
+                                lineNumber: 1149,
                                 columnNumber: 15
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                        lineNumber: 1115,
+                        lineNumber: 1136,
                         columnNumber: 13
                     }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
                         onClick: ()=>setSelectedEscrow(escrow),
@@ -1321,25 +1334,25 @@ function EscrowUI() {
                                 className: "h-4 w-4"
                             }, void 0, false, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 1148,
+                                lineNumber: 1169,
                                 columnNumber: 15
                             }, this),
                             isSelected ? "Selected" : "Select"
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                        lineNumber: 1143,
+                        lineNumber: 1164,
                         columnNumber: 13
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                lineNumber: 1080,
+                lineNumber: 1101,
                 columnNumber: 9
             }, this)
         }, escrow.publicKey.toBase58(), false, {
             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-            lineNumber: 1072,
+            lineNumber: 1093,
             columnNumber: 7
         }, this);
     };
@@ -1350,14 +1363,14 @@ function EscrowUI() {
                 className: "pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_58%_8%,rgba(124,58,237,0.30),transparent_27%),radial-gradient(circle_at_16%_22%,rgba(126,34,206,0.28),transparent_24%),radial-gradient(circle_at_86%_84%,rgba(37,99,235,0.14),transparent_24%),linear-gradient(180deg,#020412_0%,#06071c_45%,#020412_100%)]"
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                lineNumber: 1159,
+                lineNumber: 1180,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "pointer-events-none absolute inset-0 opacity-35 [background-image:linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] [background-size:70px_70px]"
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                lineNumber: 1160,
+                lineNumber: 1181,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1377,12 +1390,12 @@ function EscrowUI() {
                                                     className: "h-10 w-10 text-fuchsia-300"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                    lineNumber: 1167,
+                                                    lineNumber: 1188,
                                                     columnNumber: 17
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1166,
+                                                lineNumber: 1187,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1392,7 +1405,7 @@ function EscrowUI() {
                                                         children: "Token Swap Launchpad"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1170,
+                                                        lineNumber: 1191,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1400,19 +1413,19 @@ function EscrowUI() {
                                                         children: "Launch classic SPL tokens, lock them in escrow, and swap peer to peer."
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1173,
+                                                        lineNumber: 1194,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1169,
+                                                lineNumber: 1190,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1165,
+                                        lineNumber: 1186,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1443,26 +1456,26 @@ function EscrowUI() {
                                                         className: "h-4 w-4"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1196,
+                                                        lineNumber: 1217,
                                                         columnNumber: 21
                                                     }, this),
                                                     item.label
                                                 ]
                                             }, item.key, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1187,
+                                                lineNumber: 1208,
                                                 columnNumber: 19
                                             }, this);
                                         })
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1179,
+                                        lineNumber: 1200,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 1164,
+                                lineNumber: 1185,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("aside", {
@@ -1477,12 +1490,12 @@ function EscrowUI() {
                                                     className: "h-4 w-4"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                    lineNumber: 1207,
+                                                    lineNumber: 1228,
                                                     columnNumber: 17
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1206,
+                                                lineNumber: 1227,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
@@ -1490,13 +1503,13 @@ function EscrowUI() {
                                                 children: "Swap Summary"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1209,
+                                                lineNumber: 1230,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1205,
+                                        lineNumber: 1226,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1510,7 +1523,7 @@ function EscrowUI() {
                                                         children: "Wallet"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1214,
+                                                        lineNumber: 1235,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1518,13 +1531,13 @@ function EscrowUI() {
                                                         children: shortenKey(wallet.publicKey)
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1215,
+                                                        lineNumber: 1236,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1213,
+                                                lineNumber: 1234,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1535,7 +1548,7 @@ function EscrowUI() {
                                                         children: "Balance"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1220,
+                                                        lineNumber: 1241,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1546,13 +1559,13 @@ function EscrowUI() {
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1221,
+                                                        lineNumber: 1242,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1219,
+                                                lineNumber: 1240,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1563,7 +1576,7 @@ function EscrowUI() {
                                                         children: "Network"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1226,
+                                                        lineNumber: 1247,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1573,7 +1586,7 @@ function EscrowUI() {
                                                                 className: "h-4 w-4 text-cyan-300"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1228,
+                                                                lineNumber: 1249,
                                                                 columnNumber: 19
                                                             }, this),
                                                             "Solana ",
@@ -1581,13 +1594,13 @@ function EscrowUI() {
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1227,
+                                                        lineNumber: 1248,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1225,
+                                                lineNumber: 1246,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1598,7 +1611,7 @@ function EscrowUI() {
                                                         children: "Escrows"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1233,
+                                                        lineNumber: 1254,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1609,19 +1622,19 @@ function EscrowUI() {
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1234,
+                                                        lineNumber: 1255,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1232,
+                                                lineNumber: 1253,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1212,
+                                        lineNumber: 1233,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1633,26 +1646,26 @@ function EscrowUI() {
                                                 className: "h-4 w-4"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1243,
+                                                lineNumber: 1264,
                                                 columnNumber: 15
                                             }, this),
                                             "Refresh Escrows"
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1238,
+                                        lineNumber: 1259,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 1204,
+                                lineNumber: 1225,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                        lineNumber: 1163,
+                        lineNumber: 1184,
                         columnNumber: 9
                     }, this),
                     (error || status) && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -1664,7 +1677,7 @@ function EscrowUI() {
                                     className: "h-5 w-5 shrink-0"
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 1253,
+                                    lineNumber: 1274,
                                     columnNumber: 17
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1672,13 +1685,13 @@ function EscrowUI() {
                                     children: error
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 1254,
+                                    lineNumber: 1275,
                                     columnNumber: 17
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 1252,
+                            lineNumber: 1273,
                             columnNumber: 15
                         }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                             className: "flex items-center gap-3 rounded-lg border border-violet-300/25 bg-violet-500/10 p-4 text-violet-100",
@@ -1687,7 +1700,7 @@ function EscrowUI() {
                                     className: "h-5 w-5 animate-spin"
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 1258,
+                                    lineNumber: 1279,
                                     columnNumber: 17
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1695,18 +1708,18 @@ function EscrowUI() {
                                     children: status
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                    lineNumber: 1259,
+                                    lineNumber: 1280,
                                     columnNumber: 17
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                            lineNumber: 1257,
+                            lineNumber: 1278,
                             columnNumber: 15
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                        lineNumber: 1250,
+                        lineNumber: 1271,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -1729,7 +1742,7 @@ function EscrowUI() {
                                                                 children: "2"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1273,
+                                                                lineNumber: 1294,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1739,7 +1752,7 @@ function EscrowUI() {
                                                                         children: "Create Escrow Terms"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1277,
+                                                                        lineNumber: 1298,
                                                                         columnNumber: 23
                                                                     }, this),
                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1747,19 +1760,19 @@ function EscrowUI() {
                                                                         children: "Initialize with your token only. Takers choose their token when they join."
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1278,
+                                                                        lineNumber: 1299,
                                                                         columnNumber: 23
                                                                     }, this)
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1276,
+                                                                lineNumber: 1297,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1272,
+                                                        lineNumber: 1293,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1777,13 +1790,13 @@ function EscrowUI() {
                                                                         className: "min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm text-white outline-none focus:border-violet-300/60"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1287,
+                                                                        lineNumber: 1308,
                                                                         columnNumber: 23
                                                                     }, this)
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1285,
+                                                                lineNumber: 1306,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -1798,19 +1811,19 @@ function EscrowUI() {
                                                                         className: "min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm text-white outline-none focus:border-violet-300/60"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1297,
+                                                                        lineNumber: 1318,
                                                                         columnNumber: 23
                                                                     }, this)
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1295,
+                                                                lineNumber: 1316,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1284,
+                                                        lineNumber: 1305,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1825,14 +1838,14 @@ function EscrowUI() {
                                                                         className: "h-4 w-4"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1317,
+                                                                        lineNumber: 1338,
                                                                         columnNumber: 23
                                                                     }, this),
                                                                     "Initialize Escrow"
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1308,
+                                                                lineNumber: 1329,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1844,26 +1857,26 @@ function EscrowUI() {
                                                                         className: "h-4 w-4"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1325,
+                                                                        lineNumber: 1346,
                                                                         columnNumber: 23
                                                                     }, this),
                                                                     "Deposit Maker Tokens"
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1320,
+                                                                lineNumber: 1341,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1307,
+                                                        lineNumber: 1328,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1271,
+                                                lineNumber: 1292,
                                                 columnNumber: 17
                                             }, this)
                                         ]
@@ -1882,7 +1895,7 @@ function EscrowUI() {
                                                                 children: "2"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1339,
+                                                                lineNumber: 1360,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1892,7 +1905,7 @@ function EscrowUI() {
                                                                         children: "Join an Escrow"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1343,
+                                                                        lineNumber: 1364,
                                                                         columnNumber: 23
                                                                     }, this),
                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1900,19 +1913,19 @@ function EscrowUI() {
                                                                         children: "Select a maker escrow, choose your token, and propose your amount."
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1344,
+                                                                        lineNumber: 1365,
                                                                         columnNumber: 23
                                                                     }, this)
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1342,
+                                                                lineNumber: 1363,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1338,
+                                                        lineNumber: 1359,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1922,12 +1935,12 @@ function EscrowUI() {
                                                             children: "No joinable escrows found."
                                                         }, void 0, false, {
                                                             fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                            lineNumber: 1352,
+                                                            lineNumber: 1373,
                                                             columnNumber: 23
                                                         }, this) : joinableEscrows.map((escrow)=>renderEscrowCard(escrow, "taker"))
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1350,
+                                                        lineNumber: 1371,
                                                         columnNumber: 19
                                                     }, this),
                                                     selectedEscrow && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1938,7 +1951,7 @@ function EscrowUI() {
                                                                 children: "Your Offer"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1362,
+                                                                lineNumber: 1383,
                                                                 columnNumber: 23
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1946,8 +1959,16 @@ function EscrowUI() {
                                                                 children: "The maker will review your token mint and amount before executing."
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1363,
+                                                                lineNumber: 1384,
                                                                 columnNumber: 23
+                                                            }, this),
+                                                            selectedOfferUsesSameMint && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                                                className: "mt-3 rounded-lg border border-amber-300/30 bg-amber-400/10 p-3 text-xs font-bold leading-5 text-amber-100",
+                                                                children: "Select a different taker token. This escrow already locks the same mint from the maker side."
+                                                            }, void 0, false, {
+                                                                fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
+                                                                lineNumber: 1388,
+                                                                columnNumber: 25
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
                                                                 className: "mt-4 grid gap-2 text-sm font-bold text-slate-200",
@@ -1961,44 +1982,44 @@ function EscrowUI() {
                                                                         className: "min-h-11 rounded-lg border border-white/10 bg-[#080a1d]/75 px-4 text-sm text-white outline-none focus:border-violet-300/60"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1368,
+                                                                        lineNumber: 1394,
                                                                         columnNumber: 25
                                                                     }, this)
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1366,
+                                                                lineNumber: 1392,
                                                                 columnNumber: 23
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
                                                                 onClick: depositTakerTokens,
-                                                                disabled: loading || selectedEscrow.account.depositTaker || !takerToken.mintAddress,
+                                                                disabled: loading || selectedEscrow.account.depositTaker || !takerToken.mintAddress || selectedOfferUsesSameMint,
                                                                 className: "mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-600 px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-45",
                                                                 children: [
                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$rocket$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Rocket$3e$__["Rocket"], {
                                                                         className: "h-4 w-4"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                        lineNumber: 1385,
+                                                                        lineNumber: 1412,
                                                                         columnNumber: 25
                                                                     }, this),
                                                                     "Deposit Taker Tokens"
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1376,
+                                                                lineNumber: 1402,
                                                                 columnNumber: 23
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1361,
+                                                        lineNumber: 1382,
                                                         columnNumber: 21
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1337,
+                                                lineNumber: 1358,
                                                 columnNumber: 17
                                             }, this)
                                         ]
@@ -2016,7 +2037,7 @@ function EscrowUI() {
                                                                 children: "Your Maker Escrows"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1398,
+                                                                lineNumber: 1425,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2024,13 +2045,13 @@ function EscrowUI() {
                                                                 children: "Review taker offers, then execute or reject them."
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1399,
+                                                                lineNumber: 1426,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1397,
+                                                        lineNumber: 1424,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -2041,13 +2062,13 @@ function EscrowUI() {
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1403,
+                                                        lineNumber: 1430,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1396,
+                                                lineNumber: 1423,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2057,24 +2078,24 @@ function EscrowUI() {
                                                     children: "No escrows created by this wallet yet."
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                    lineNumber: 1410,
+                                                    lineNumber: 1437,
                                                     columnNumber: 21
                                                 }, this) : makerEscrows.map((escrow)=>renderEscrowCard(escrow, "maker"))
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1408,
+                                                lineNumber: 1435,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1395,
+                                        lineNumber: 1422,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 1266,
+                                lineNumber: 1287,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("aside", {
@@ -2088,7 +2109,7 @@ function EscrowUI() {
                                                 children: "Flow"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1423,
+                                                lineNumber: 1450,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2107,7 +2128,7 @@ function EscrowUI() {
                                                                 children: index + 1
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1433,
+                                                                lineNumber: 1460,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2115,24 +2136,24 @@ function EscrowUI() {
                                                                 children: step
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1436,
+                                                                lineNumber: 1463,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, step, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1432,
+                                                        lineNumber: 1459,
                                                         columnNumber: 19
                                                     }, this))
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1424,
+                                                lineNumber: 1451,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1422,
+                                        lineNumber: 1449,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2143,7 +2164,7 @@ function EscrowUI() {
                                                 children: "Contract Notes"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1443,
+                                                lineNumber: 1470,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2156,14 +2177,14 @@ function EscrowUI() {
                                                                 className: "mt-0.5 h-5 w-5 shrink-0 text-violet-300"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1446,
+                                                                lineNumber: 1473,
                                                                 columnNumber: 19
                                                             }, this),
                                                             "The current IDL uses the classic SPL Token program, so this launchpad creates Tokenkeg mints."
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1445,
+                                                        lineNumber: 1472,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2173,14 +2194,14 @@ function EscrowUI() {
                                                                 className: "mt-0.5 h-5 w-5 shrink-0 text-violet-300"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1450,
+                                                                lineNumber: 1477,
                                                                 columnNumber: 19
                                                             }, this),
                                                             "Image and JSON metadata are uploaded to Pinata, but this contract does not store metadata on-chain."
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1449,
+                                                        lineNumber: 1476,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2190,50 +2211,50 @@ function EscrowUI() {
                                                                 className: "mt-0.5 h-5 w-5 shrink-0 text-violet-300"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                                lineNumber: 1454,
+                                                                lineNumber: 1481,
                                                                 columnNumber: 19
                                                             }, this),
                                                             "Amounts use 9 decimals and are converted to raw token units before Anchor calls."
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                        lineNumber: 1453,
+                                                        lineNumber: 1480,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                                lineNumber: 1444,
+                                                lineNumber: 1471,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                        lineNumber: 1442,
+                                        lineNumber: 1469,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                                lineNumber: 1421,
+                                lineNumber: 1448,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                        lineNumber: 1265,
+                        lineNumber: 1286,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-                lineNumber: 1162,
+                lineNumber: 1183,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/frontend/app/TokenSwap/page.tsx",
-        lineNumber: 1158,
+        lineNumber: 1179,
         columnNumber: 5
     }, this);
 }
@@ -7467,13 +7488,16 @@ const navItems = [
         view: "nft"
     },
     {
-        label: "How it Works"
+        label: "How it Works",
+        view: "how"
     },
     {
-        label: "Docs"
+        label: "Docs",
+        view: "docs"
     },
     {
-        label: "Stats"
+        label: "Stats",
+        view: "stats"
     }
 ];
 const metrics = [
@@ -7518,12 +7542,89 @@ const benefits = [
         icon: __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$store$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Store$3e$__["Store"]
     }
 ];
+const workflowSteps = [
+    {
+        title: "Connect Wallet",
+        description: "Use a Solana wallet on devnet to create tokens, fund escrows, mint NFTs, and buy listings.",
+        icon: __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$wallet$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Wallet$3e$__["Wallet"]
+    },
+    {
+        title: "Create or Select Assets",
+        description: "Launch a new SPL token with metadata, choose an existing wallet token, or mint an NFT for the market.",
+        icon: __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$sparkles$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Sparkles$3e$__["Sparkles"]
+    },
+    {
+        title: "Lock Value in Escrow",
+        description: "Makers initialize a trade and deposit tokens into a PDA-owned vault controlled by the program.",
+        icon: __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$lock$2d$keyhole$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__LockKeyhole$3e$__["LockKeyhole"]
+    },
+    {
+        title: "Join and Settle",
+        description: "Takers choose a different SPL token, deposit their offer, and the maker executes or rejects the swap.",
+        icon: __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$repeat$2d$2$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Repeat2$3e$__["Repeat2"]
+    }
+];
+const docSections = [
+    {
+        title: "Token Swap",
+        points: [
+            "Escrows are PDA accounts seeded by maker, maker mint, and escrow id.",
+            "Makers deposit the offered SPL token before takers can join.",
+            "Takers must offer a different SPL token mint.",
+            "The maker reviews the offer, then executes or rejects it."
+        ]
+    },
+    {
+        title: "Token Launchpad",
+        points: [
+            "Creates classic Tokenkeg SPL mints so the escrow program can transfer them.",
+            "Uploads image and JSON metadata to Pinata/IPFS.",
+            "Creates Metaplex metadata accounts for wallet-readable name, symbol, and image.",
+            "Wallet-held SPL tokens can be selected without mint authority."
+        ]
+    },
+    {
+        title: "NFT Market",
+        points: [
+            "Mint NFTs with metadata and image assets.",
+            "List owned NFTs through the marketplace escrow program.",
+            "Buy active listings with SOL on devnet.",
+            "Cancel listings you created before sale."
+        ]
+    }
+];
+const statCards = [
+    {
+        label: "Escrow Swaps",
+        value: "32",
+        detail: "active devnet escrows",
+        icon: __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$repeat$2d$2$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Repeat2$3e$__["Repeat2"]
+    },
+    {
+        label: "Listed NFTs",
+        value: "45K+",
+        detail: "marketplace inventory",
+        icon: __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$boxes$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Boxes$3e$__["Boxes"]
+    },
+    {
+        label: "Volume",
+        value: "1.2M+",
+        detail: "simulated SOL volume",
+        icon: __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$circle$2d$dollar$2d$sign$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__CircleDollarSign$3e$__["CircleDollarSign"]
+    },
+    {
+        label: "Users",
+        value: "12K+",
+        detail: "active traders",
+        icon: __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$users$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Users$3e$__["Users"]
+    }
+];
 function WalletButton() {
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f40$solana$2f$wallet$2d$adapter$2d$react$2d$ui$2f$lib$2f$esm$2f$WalletMultiButton$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["WalletMultiButton"], {
         className: "!h-11 !rounded-lg !bg-gradient-to-r !from-violet-500 !to-fuchsia-600 !px-5 !text-sm !font-bold !text-white !shadow-[0_12px_32px_rgba(147,51,234,0.35)] transition hover:!from-violet-400 hover:!to-fuchsia-500"
     }, void 0, false, {
         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-        lineNumber: 71,
+        lineNumber: 131,
         columnNumber: 5
     }, this);
 }
@@ -7537,7 +7638,7 @@ function BrandMark() {
                 children: "SD"
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 78,
+                lineNumber: 138,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -7545,13 +7646,13 @@ function BrandMark() {
                 children: "Solana DApp"
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 81,
+                lineNumber: 141,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-        lineNumber: 77,
+        lineNumber: 137,
         columnNumber: 5
     }, this);
 }
@@ -7569,7 +7670,7 @@ function ShellHeader({ activeView, onNavigate, onBack }) {
                         className: "flex items-center gap-3",
                         children: activeView === "dashboard" ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(BrandMark, {}, void 0, false, {
                             fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                            lineNumber: 102,
+                            lineNumber: 162,
                             columnNumber: 13
                         }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
                             children: [
@@ -7581,71 +7682,64 @@ function ShellHeader({ activeView, onNavigate, onBack }) {
                                             className: "h-4 w-4"
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                            lineNumber: 109,
+                                            lineNumber: 169,
                                             columnNumber: 17
                                         }, this),
                                         "Dashboard"
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                    lineNumber: 105,
+                                    lineNumber: 165,
                                     columnNumber: 15
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                     className: "hidden sm:block",
                                     children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(BrandMark, {}, void 0, false, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 113,
+                                        lineNumber: 173,
                                         columnNumber: 17
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                    lineNumber: 112,
+                                    lineNumber: 172,
                                     columnNumber: 15
                                 }, this)
                             ]
                         }, void 0, true)
                     }, void 0, false, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 100,
+                        lineNumber: 160,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                         className: "hidden items-center gap-8 text-sm font-bold lg:flex",
                         children: navItems.map((item)=>{
                             const isActive = item.view === activeView;
-                            return item.view ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                            return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
                                 onClick: ()=>onNavigate(item.view),
                                 className: `transition hover:text-fuchsia-300 ${isActive ? "text-fuchsia-300" : "text-white"}`,
                                 children: item.label
                             }, item.label, false, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 124,
-                                columnNumber: 15
-                            }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
-                                className: "text-white transition hover:text-fuchsia-300",
-                                children: item.label
-                            }, item.label, false, {
-                                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 134,
+                                lineNumber: 184,
                                 columnNumber: 15
                             }, this);
                         })
                     }, void 0, false, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 119,
+                        lineNumber: 179,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                         className: "hidden sm:block",
                         children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(WalletButton, {}, void 0, false, {
                             fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                            lineNumber: 145,
+                            lineNumber: 198,
                             columnNumber: 11
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 144,
+                        lineNumber: 197,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7656,24 +7750,24 @@ function ShellHeader({ activeView, onNavigate, onBack }) {
                             className: "h-5 w-5"
                         }, void 0, false, {
                             fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                            lineNumber: 153,
+                            lineNumber: 206,
                             columnNumber: 23
                         }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$menu$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Menu$3e$__["Menu"], {
                             className: "h-5 w-5"
                         }, void 0, false, {
                             fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                            lineNumber: 153,
+                            lineNumber: 206,
                             columnNumber: 51
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 148,
+                        lineNumber: 201,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 99,
+                lineNumber: 159,
                 columnNumber: 7
             }, this),
             menuOpen && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7683,36 +7777,36 @@ function ShellHeader({ activeView, onNavigate, onBack }) {
                         className: "grid gap-2 py-3",
                         children: navItems.map((item)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
                                 onClick: ()=>{
-                                    if (item.view) onNavigate(item.view);
+                                    onNavigate(item.view);
                                     setMenuOpen(false);
                                 },
                                 className: `rounded-lg px-3 py-2 text-left text-sm font-bold ${item.view === activeView ? "bg-white/10 text-fuchsia-300" : "text-white hover:bg-white/5"}`,
                                 children: item.label
                             }, item.label, false, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 161,
+                                lineNumber: 214,
                                 columnNumber: 15
                             }, this))
                     }, void 0, false, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 159,
+                        lineNumber: 212,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(WalletButton, {}, void 0, false, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 177,
+                        lineNumber: 230,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 158,
+                lineNumber: 211,
                 columnNumber: 9
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-        lineNumber: 98,
+        lineNumber: 158,
         columnNumber: 5
     }, this);
 }
@@ -7726,56 +7820,56 @@ function HeroArtwork() {
                 className: "absolute inset-0 bg-[radial-gradient(circle_at_70%_35%,rgba(147,51,234,0.36),transparent_28%),radial-gradient(circle_at_56%_75%,rgba(217,70,239,0.28),transparent_24%),radial-gradient(circle_at_95%_40%,rgba(37,99,235,0.2),transparent_22%)]"
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 187,
+                lineNumber: 240,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "absolute right-4 top-4 h-72 w-72 rounded-full border border-violet-500/20 blur-sm"
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 188,
+                lineNumber: 241,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "absolute bottom-16 right-8 h-28 w-[26rem] max-w-[72vw] rounded-[50%] border border-fuchsia-300/40 bg-fuchsia-500/10 shadow-[0_0_70px_rgba(217,70,239,0.65),inset_0_0_40px_rgba(168,85,247,0.45)]"
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 189,
+                lineNumber: 242,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "absolute bottom-20 right-16 h-12 w-[20rem] max-w-[58vw] rounded-[50%] border border-violet-300/50 bg-violet-500/20 blur-[1px]"
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 190,
+                lineNumber: 243,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "absolute bottom-24 right-28 h-8 w-[14rem] max-w-[42vw] rounded-[50%] bg-fuchsia-300/70 blur-xl"
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 191,
+                lineNumber: 244,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "absolute left-[20%] top-[16%] hidden h-16 w-16 rotate-12 rounded-2xl border border-violet-300/30 bg-violet-500/20 shadow-[0_0_30px_rgba(139,92,246,0.4)] sm:block"
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 193,
+                lineNumber: 246,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "absolute right-[7%] top-[18%] h-12 w-12 rotate-45 rounded-lg border border-cyan-300/30 bg-indigo-500/30 shadow-[0_0_24px_rgba(99,102,241,0.45)]"
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 194,
+                lineNumber: 247,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "absolute right-[18%] top-[42%] h-7 w-7 rotate-12 rounded-md border border-violet-200/40 bg-fuchsia-500/30"
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 195,
+                lineNumber: 248,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7784,12 +7878,12 @@ function HeroArtwork() {
                     className: "absolute left-1/2 top-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 text-fuchsia-300"
                 }, void 0, false, {
                     fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                    lineNumber: 198,
+                    lineNumber: 251,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 197,
+                lineNumber: 250,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7799,27 +7893,27 @@ function HeroArtwork() {
                         className: "absolute inset-5 rotate-[-18deg] rounded-md bg-gradient-to-br from-cyan-300 via-violet-400 to-fuchsia-500"
                     }, void 0, false, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 202,
+                        lineNumber: 255,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                         className: "absolute inset-x-8 top-8 h-5 rotate-[-18deg] rounded bg-[#171044]"
                     }, void 0, false, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 203,
+                        lineNumber: 256,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                         className: "absolute inset-x-8 bottom-8 h-5 rotate-[-18deg] rounded bg-[#171044]"
                     }, void 0, false, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 204,
+                        lineNumber: 257,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 201,
+                lineNumber: 254,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7831,7 +7925,7 @@ function HeroArtwork() {
                             className: "mb-5 h-12 w-12 text-violet-200"
                         }, void 0, false, {
                             fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                            lineNumber: 209,
+                            lineNumber: 262,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -7839,18 +7933,18 @@ function HeroArtwork() {
                             children: "Token Swap"
                         }, void 0, false, {
                             fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                            lineNumber: 210,
+                            lineNumber: 263,
                             columnNumber: 11
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                    lineNumber: 208,
+                    lineNumber: 261,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 207,
+                lineNumber: 260,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7862,7 +7956,7 @@ function HeroArtwork() {
                             className: "mb-5 h-11 w-11 text-violet-200"
                         }, void 0, false, {
                             fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                            lineNumber: 218,
+                            lineNumber: 271,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -7870,24 +7964,24 @@ function HeroArtwork() {
                             children: "NFT Market"
                         }, void 0, false, {
                             fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                            lineNumber: 219,
+                            lineNumber: 272,
                             columnNumber: 11
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                    lineNumber: 217,
+                    lineNumber: 270,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 216,
+                lineNumber: 269,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-        lineNumber: 186,
+        lineNumber: 239,
         columnNumber: 5
     }, this);
 }
@@ -7911,7 +8005,7 @@ function Dashboard({ onNavigate }) {
                                         className: "h-4 w-4 rounded-full bg-gradient-to-br from-cyan-300 via-violet-400 to-fuchsia-500"
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 236,
+                                        lineNumber: 289,
                                         columnNumber: 13
                                     }, this),
                                     "Built on Solana",
@@ -7919,13 +8013,13 @@ function Dashboard({ onNavigate }) {
                                         className: "h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.9)]"
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 238,
+                                        lineNumber: 291,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 235,
+                                lineNumber: 288,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
@@ -7938,13 +8032,13 @@ function Dashboard({ onNavigate }) {
                                         children: "New Open Internet"
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 243,
+                                        lineNumber: 296,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 241,
+                                lineNumber: 294,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -7952,7 +8046,7 @@ function Dashboard({ onNavigate }) {
                                 children: "Empowering decentralized trading with lightning-fast swaps and a seamless NFT marketplace, built for creators and traders."
                             }, void 0, false, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 248,
+                                lineNumber: 301,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7966,14 +8060,14 @@ function Dashboard({ onNavigate }) {
                                                 className: "h-5 w-5"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 258,
+                                                lineNumber: 311,
                                                 columnNumber: 15
                                             }, this),
                                             "Launch App"
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 254,
+                                        lineNumber: 307,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7984,20 +8078,20 @@ function Dashboard({ onNavigate }) {
                                                 className: "h-5 w-5"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 265,
+                                                lineNumber: 318,
                                                 columnNumber: 15
                                             }, this),
                                             "Explore Market"
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 261,
+                                        lineNumber: 314,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 253,
+                                lineNumber: 306,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8011,7 +8105,7 @@ function Dashboard({ onNavigate }) {
                                                 className: `h-7 w-7 ${metric.color}`
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 279,
+                                                lineNumber: 332,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8021,7 +8115,7 @@ function Dashboard({ onNavigate }) {
                                                         children: metric.value
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                        lineNumber: 281,
+                                                        lineNumber: 334,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -8029,42 +8123,42 @@ function Dashboard({ onNavigate }) {
                                                         children: metric.label
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                        lineNumber: 282,
+                                                        lineNumber: 335,
                                                         columnNumber: 21
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 280,
+                                                lineNumber: 333,
                                                 columnNumber: 19
                                             }, this)
                                         ]
                                     }, metric.label, true, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 275,
+                                        lineNumber: 328,
                                         columnNumber: 17
                                     }, this);
                                 })
                             }, void 0, false, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 270,
+                                lineNumber: 323,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 234,
+                        lineNumber: 287,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(HeroArtwork, {}, void 0, false, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 290,
+                        lineNumber: 343,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 233,
+                lineNumber: 286,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -8077,14 +8171,14 @@ function Dashboard({ onNavigate }) {
                                 className: "h-7 w-7 text-violet-300"
                             }, void 0, false, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 295,
+                                lineNumber: 348,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                 children: "Fast"
                             }, void 0, false, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 296,
+                                lineNumber: 349,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -8092,14 +8186,14 @@ function Dashboard({ onNavigate }) {
                                 children: "-"
                             }, void 0, false, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 297,
+                                lineNumber: 350,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                 children: "Secure"
                             }, void 0, false, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 298,
+                                lineNumber: 351,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -8107,20 +8201,20 @@ function Dashboard({ onNavigate }) {
                                 children: "-"
                             }, void 0, false, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 299,
+                                lineNumber: 352,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                 children: "Decentralized"
                             }, void 0, false, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 300,
+                                lineNumber: 353,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 294,
+                        lineNumber: 347,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8130,7 +8224,7 @@ function Dashboard({ onNavigate }) {
                                 className: "h-4 w-4 text-emerald-300"
                             }, void 0, false, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 303,
+                                lineNumber: 356,
                                 columnNumber: 11
                             }, this),
                             "Audited & Secure",
@@ -8138,19 +8232,19 @@ function Dashboard({ onNavigate }) {
                                 className: "h-2 w-2 rounded-full bg-emerald-400"
                             }, void 0, false, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 305,
+                                lineNumber: 358,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 302,
+                        lineNumber: 355,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 293,
+                lineNumber: 346,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -8172,12 +8266,12 @@ function Dashboard({ onNavigate }) {
                                                     className: "h-8 w-8"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                    lineNumber: 317,
+                                                    lineNumber: 370,
                                                     columnNumber: 17
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 316,
+                                                lineNumber: 369,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8187,7 +8281,7 @@ function Dashboard({ onNavigate }) {
                                                         children: "Token Swap"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                        lineNumber: 320,
+                                                        lineNumber: 373,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -8195,19 +8289,19 @@ function Dashboard({ onNavigate }) {
                                                         children: "Secure, escrow-based peer-to-peer SPL token swaps."
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                        lineNumber: 321,
+                                                        lineNumber: 374,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 319,
+                                                lineNumber: 372,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 315,
+                                        lineNumber: 368,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -8218,19 +8312,19 @@ function Dashboard({ onNavigate }) {
                                                 className: "h-4 w-4 transition group-hover:translate-x-1"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 328,
+                                                lineNumber: 381,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 326,
+                                        lineNumber: 379,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 314,
+                                lineNumber: 367,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8244,7 +8338,7 @@ function Dashboard({ onNavigate }) {
                                                 children: "You Send"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 334,
+                                                lineNumber: 387,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8255,7 +8349,7 @@ function Dashboard({ onNavigate }) {
                                                         children: "10"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                        lineNumber: 336,
+                                                        lineNumber: 389,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -8265,26 +8359,26 @@ function Dashboard({ onNavigate }) {
                                                                 className: "h-5 w-5 text-cyan-300"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                                lineNumber: 338,
+                                                                lineNumber: 391,
                                                                 columnNumber: 19
                                                             }, this),
                                                             "SOL"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                        lineNumber: 337,
+                                                        lineNumber: 390,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 335,
+                                                lineNumber: 388,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 333,
+                                        lineNumber: 386,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8293,12 +8387,12 @@ function Dashboard({ onNavigate }) {
                                             className: "h-5 w-5"
                                         }, void 0, false, {
                                             fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                            lineNumber: 344,
+                                            lineNumber: 397,
                                             columnNumber: 15
                                         }, this)
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 343,
+                                        lineNumber: 396,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8309,7 +8403,7 @@ function Dashboard({ onNavigate }) {
                                                 children: "You Receive"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 347,
+                                                lineNumber: 400,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8320,7 +8414,7 @@ function Dashboard({ onNavigate }) {
                                                         children: "245.75"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                        lineNumber: 349,
+                                                        lineNumber: 402,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -8330,38 +8424,38 @@ function Dashboard({ onNavigate }) {
                                                                 className: "h-5 w-5 text-blue-300"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                                lineNumber: 351,
+                                                                lineNumber: 404,
                                                                 columnNumber: 19
                                                             }, this),
                                                             "USDC"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                        lineNumber: 350,
+                                                        lineNumber: 403,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 348,
+                                                lineNumber: 401,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 346,
+                                        lineNumber: 399,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 332,
+                                lineNumber: 385,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 310,
+                        lineNumber: 363,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -8380,12 +8474,12 @@ function Dashboard({ onNavigate }) {
                                                     className: "h-8 w-8"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                    lineNumber: 366,
+                                                    lineNumber: 419,
                                                     columnNumber: 17
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 365,
+                                                lineNumber: 418,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8395,7 +8489,7 @@ function Dashboard({ onNavigate }) {
                                                         children: "NFT Market"
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                        lineNumber: 369,
+                                                        lineNumber: 422,
                                                         columnNumber: 17
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -8403,19 +8497,19 @@ function Dashboard({ onNavigate }) {
                                                         children: "Mint, buy, and trade unique digital collectibles instantly."
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                        lineNumber: 370,
+                                                        lineNumber: 423,
                                                         columnNumber: 17
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 368,
+                                                lineNumber: 421,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 364,
+                                        lineNumber: 417,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -8426,19 +8520,19 @@ function Dashboard({ onNavigate }) {
                                                 className: "h-4 w-4 transition group-hover:translate-x-1"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 377,
+                                                lineNumber: 430,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 375,
+                                        lineNumber: 428,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 363,
+                                lineNumber: 416,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8451,20 +8545,20 @@ function Dashboard({ onNavigate }) {
                                                 className: "absolute inset-0 bg-[radial-gradient(circle_at_50%_65%,rgba(217,70,239,0.55),transparent_28%),radial-gradient(circle_at_50%_38%,rgba(34,211,238,0.36),transparent_24%),linear-gradient(135deg,rgba(88,28,135,0.9),rgba(2,6,23,0.95))]"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 383,
+                                                lineNumber: 436,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$sparkles$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Sparkles$3e$__["Sparkles"], {
                                                 className: "absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 text-cyan-200 drop-shadow-[0_0_24px_rgba(34,211,238,0.9)]"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 384,
+                                                lineNumber: 437,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 382,
+                                        lineNumber: 435,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -8472,7 +8566,7 @@ function Dashboard({ onNavigate }) {
                                         children: "Cosmic Genesis #7321"
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 386,
+                                        lineNumber: 439,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8483,7 +8577,7 @@ function Dashboard({ onNavigate }) {
                                                 children: "2.45 SOL"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 388,
+                                                lineNumber: 441,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -8492,36 +8586,36 @@ function Dashboard({ onNavigate }) {
                                                     className: "h-4 w-4"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                    lineNumber: 390,
+                                                    lineNumber: 443,
                                                     columnNumber: 17
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                                lineNumber: 389,
+                                                lineNumber: 442,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 387,
+                                        lineNumber: 440,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 381,
+                                lineNumber: 434,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 359,
+                        lineNumber: 412,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 309,
+                lineNumber: 362,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -8537,12 +8631,12 @@ function Dashboard({ onNavigate }) {
                                     className: "h-6 w-6"
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                    lineNumber: 404,
+                                    lineNumber: 457,
                                     columnNumber: 17
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 403,
+                                lineNumber: 456,
                                 columnNumber: 15
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8552,7 +8646,7 @@ function Dashboard({ onNavigate }) {
                                         children: benefit.title
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 407,
+                                        lineNumber: 460,
                                         columnNumber: 17
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -8560,25 +8654,25 @@ function Dashboard({ onNavigate }) {
                                         children: benefit.description
                                     }, void 0, false, {
                                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                        lineNumber: 408,
+                                        lineNumber: 461,
                                         columnNumber: 17
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                lineNumber: 406,
+                                lineNumber: 459,
                                 columnNumber: 15
                             }, this)
                         ]
                     }, benefit.title, true, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 402,
+                        lineNumber: 455,
                         columnNumber: 13
                     }, this);
                 })
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 397,
+                lineNumber: 450,
                 columnNumber: 7
             }, this),
             !wallet.publicKey && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -8593,7 +8687,7 @@ function Dashboard({ onNavigate }) {
                                     className: "h-5 w-5"
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                    lineNumber: 419,
+                                    lineNumber: 472,
                                     columnNumber: 15
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -8601,35 +8695,35 @@ function Dashboard({ onNavigate }) {
                                     children: "Connect Phantom or another Solana wallet to unlock minting, listing, buying, and swapping."
                                 }, void 0, false, {
                                     fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                                    lineNumber: 420,
+                                    lineNumber: 473,
                                     columnNumber: 15
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                            lineNumber: 418,
+                            lineNumber: 471,
                             columnNumber: 13
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(WalletButton, {}, void 0, false, {
                             fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                            lineNumber: 425,
+                            lineNumber: 478,
                             columnNumber: 13
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                    lineNumber: 417,
+                    lineNumber: 470,
                     columnNumber: 11
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 416,
+                lineNumber: 469,
                 columnNumber: 9
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-        lineNumber: 232,
+        lineNumber: 285,
         columnNumber: 5
     }, this);
 }
@@ -8639,6 +8733,683 @@ _s1(Dashboard, "i+/qxb0flJRE8MgvazOGMkNRtsk=", false, function() {
     ];
 });
 _c4 = Dashboard;
+function HowItWorksView({ onNavigate }) {
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("main", {
+        className: "relative mx-auto w-[min(88rem,calc(100%-2rem))] pb-12 pt-10",
+        children: [
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
+                className: "grid gap-8 rounded-2xl border border-white/10 bg-white/[0.04] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] lg:grid-cols-[0.9fr_1.1fr] lg:p-8",
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                className: "mb-4 text-sm font-black uppercase tracking-[0.25em] text-violet-300",
+                                children: "How It Works"
+                            }, void 0, false, {
+                                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                lineNumber: 491,
+                                columnNumber: 11
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
+                                className: "text-4xl font-black leading-tight text-white sm:text-6xl",
+                                children: "One wallet, two asset flows, escrow settlement."
+                            }, void 0, false, {
+                                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                lineNumber: 494,
+                                columnNumber: 11
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                className: "mt-5 max-w-2xl text-lg leading-8 text-slate-300",
+                                children: "The app combines SPL token escrow swaps and NFT marketplace actions behind one wallet-first interface."
+                            }, void 0, false, {
+                                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                lineNumber: 497,
+                                columnNumber: 11
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "mt-8 flex flex-col gap-3 sm:flex-row",
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                        onClick: ()=>onNavigate("swap"),
+                                        className: "inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-600 px-6 text-sm font-black text-white",
+                                        children: [
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$repeat$2d$2$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Repeat2$3e$__["Repeat2"], {
+                                                className: "h-4 w-4"
+                                            }, void 0, false, {
+                                                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                lineNumber: 505,
+                                                columnNumber: 15
+                                            }, this),
+                                            "Start Swap"
+                                        ]
+                                    }, void 0, true, {
+                                        fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                        lineNumber: 501,
+                                        columnNumber: 13
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                        onClick: ()=>onNavigate("nft"),
+                                        className: "inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-6 text-sm font-black text-white transition hover:border-violet-300/50",
+                                        children: [
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$store$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Store$3e$__["Store"], {
+                                                className: "h-4 w-4"
+                                            }, void 0, false, {
+                                                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                lineNumber: 512,
+                                                columnNumber: 15
+                                            }, this),
+                                            "Open Market"
+                                        ]
+                                    }, void 0, true, {
+                                        fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                        lineNumber: 508,
+                                        columnNumber: 13
+                                    }, this)
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                lineNumber: 500,
+                                columnNumber: 11
+                            }, this)
+                        ]
+                    }, void 0, true, {
+                        fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                        lineNumber: 490,
+                        columnNumber: 9
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "grid gap-4",
+                        children: workflowSteps.map((step, index)=>{
+                            const Icon = step.icon;
+                            return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "grid gap-4 rounded-xl border border-white/10 bg-[#090b1f]/75 p-5 sm:grid-cols-[auto_1fr]",
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                        className: "flex items-center gap-3",
+                                        children: [
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                className: "flex h-11 w-11 items-center justify-center rounded-lg bg-violet-500/20 text-violet-200",
+                                                children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(Icon, {
+                                                    className: "h-5 w-5"
+                                                }, void 0, false, {
+                                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                    lineNumber: 529,
+                                                    columnNumber: 21
+                                                }, this)
+                                            }, void 0, false, {
+                                                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                lineNumber: 528,
+                                                columnNumber: 19
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                className: "text-sm font-black text-violet-200",
+                                                children: String(index + 1).padStart(2, "0")
+                                            }, void 0, false, {
+                                                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                lineNumber: 531,
+                                                columnNumber: 19
+                                            }, this)
+                                        ]
+                                    }, void 0, true, {
+                                        fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                        lineNumber: 527,
+                                        columnNumber: 17
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                        children: [
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
+                                                className: "text-xl font-black text-white",
+                                                children: step.title
+                                            }, void 0, false, {
+                                                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                lineNumber: 536,
+                                                columnNumber: 19
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                                className: "mt-2 leading-7 text-slate-300",
+                                                children: step.description
+                                            }, void 0, false, {
+                                                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                lineNumber: 537,
+                                                columnNumber: 19
+                                            }, this)
+                                        ]
+                                    }, void 0, true, {
+                                        fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                        lineNumber: 535,
+                                        columnNumber: 17
+                                    }, this)
+                                ]
+                            }, step.title, true, {
+                                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                lineNumber: 523,
+                                columnNumber: 15
+                            }, this);
+                        })
+                    }, void 0, false, {
+                        fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                        lineNumber: 518,
+                        columnNumber: 9
+                    }, this)
+                ]
+            }, void 0, true, {
+                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                lineNumber: 489,
+                columnNumber: 7
+            }, this),
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
+                className: "mt-6 grid gap-5 md:grid-cols-3",
+                children: [
+                    [
+                        "Maker",
+                        "Creates escrow terms and deposits their SPL token."
+                    ],
+                    [
+                        "Taker",
+                        "Chooses a different SPL token and deposits an offer."
+                    ],
+                    [
+                        "Program",
+                        "Transfers both vault balances atomically when maker executes."
+                    ]
+                ].map(([title, description])=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "rounded-2xl border border-white/10 bg-white/[0.04] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h3", {
+                                className: "text-lg font-black text-white",
+                                children: title
+                            }, void 0, false, {
+                                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                lineNumber: 555,
+                                columnNumber: 13
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                className: "mt-3 leading-6 text-slate-300",
+                                children: description
+                            }, void 0, false, {
+                                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                lineNumber: 556,
+                                columnNumber: 13
+                            }, this)
+                        ]
+                    }, title, true, {
+                        fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                        lineNumber: 551,
+                        columnNumber: 11
+                    }, this))
+            }, void 0, false, {
+                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                lineNumber: 545,
+                columnNumber: 7
+            }, this)
+        ]
+    }, void 0, true, {
+        fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+        lineNumber: 488,
+        columnNumber: 5
+    }, this);
+}
+_c5 = HowItWorksView;
+function DocsView({ onNavigate }) {
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("main", {
+        className: "relative mx-auto w-[min(88rem,calc(100%-2rem))] pb-12 pt-10",
+        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
+            className: "rounded-2xl border border-white/10 bg-white/[0.04] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] lg:p-8",
+            children: [
+                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                    className: "mb-4 text-sm font-black uppercase tracking-[0.25em] text-violet-300",
+                    children: "Docs"
+                }, void 0, false, {
+                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                    lineNumber: 568,
+                    columnNumber: 9
+                }, this),
+                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                    className: "grid gap-6 lg:grid-cols-[0.78fr_1.22fr]",
+                    children: [
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                            children: [
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
+                                    className: "text-4xl font-black leading-tight text-white sm:text-6xl",
+                                    children: "Build notes for the token swap and NFT market."
+                                }, void 0, false, {
+                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                    lineNumber: 573,
+                                    columnNumber: 13
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                    className: "mt-5 text-lg leading-8 text-slate-300",
+                                    children: "A compact reference for the current devnet implementation, the IDL-driven frontend, and the asset flows."
+                                }, void 0, false, {
+                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                    lineNumber: 576,
+                                    columnNumber: 13
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                    className: "mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-1",
+                                    children: [
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                            onClick: ()=>onNavigate("swap"),
+                                            className: "inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-600 px-5 text-sm font-black text-white",
+                                            children: [
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$repeat$2d$2$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Repeat2$3e$__["Repeat2"], {
+                                                    className: "h-4 w-4"
+                                                }, void 0, false, {
+                                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                    lineNumber: 584,
+                                                    columnNumber: 17
+                                                }, this),
+                                                "Swap UI"
+                                            ]
+                                        }, void 0, true, {
+                                            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                            lineNumber: 580,
+                                            columnNumber: 15
+                                        }, this),
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                            onClick: ()=>onNavigate("nft"),
+                                            className: "inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-5 text-sm font-black text-white",
+                                            children: [
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$gallery$2d$vertical$2d$end$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__GalleryVerticalEnd$3e$__["GalleryVerticalEnd"], {
+                                                    className: "h-4 w-4"
+                                                }, void 0, false, {
+                                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                    lineNumber: 591,
+                                                    columnNumber: 17
+                                                }, this),
+                                                "NFT Market"
+                                            ]
+                                        }, void 0, true, {
+                                            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                            lineNumber: 587,
+                                            columnNumber: 15
+                                        }, this)
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                    lineNumber: 579,
+                                    columnNumber: 13
+                                }, this)
+                            ]
+                        }, void 0, true, {
+                            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                            lineNumber: 572,
+                            columnNumber: 11
+                        }, this),
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                            className: "grid gap-4",
+                            children: docSections.map((section)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("article", {
+                                    className: "rounded-xl border border-white/10 bg-[#090b1f]/75 p-5",
+                                    children: [
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
+                                            className: "text-xl font-black text-white",
+                                            children: section.title
+                                        }, void 0, false, {
+                                            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                            lineNumber: 603,
+                                            columnNumber: 17
+                                        }, this),
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                            className: "mt-4 grid gap-3",
+                                            children: section.points.map((point)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                                    className: "flex gap-3 text-sm leading-6 text-slate-300",
+                                                    children: [
+                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$shield$2d$check$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__ShieldCheck$3e$__["ShieldCheck"], {
+                                                            className: "mt-0.5 h-4 w-4 shrink-0 text-emerald-300"
+                                                        }, void 0, false, {
+                                                            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                            lineNumber: 607,
+                                                            columnNumber: 23
+                                                        }, this),
+                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                            children: point
+                                                        }, void 0, false, {
+                                                            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                            lineNumber: 608,
+                                                            columnNumber: 23
+                                                        }, this)
+                                                    ]
+                                                }, point, true, {
+                                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                    lineNumber: 606,
+                                                    columnNumber: 21
+                                                }, this))
+                                        }, void 0, false, {
+                                            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                            lineNumber: 604,
+                                            columnNumber: 17
+                                        }, this)
+                                    ]
+                                }, section.title, true, {
+                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                    lineNumber: 599,
+                                    columnNumber: 15
+                                }, this))
+                        }, void 0, false, {
+                            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                            lineNumber: 597,
+                            columnNumber: 11
+                        }, this)
+                    ]
+                }, void 0, true, {
+                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                    lineNumber: 571,
+                    columnNumber: 9
+                }, this)
+            ]
+        }, void 0, true, {
+            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+            lineNumber: 567,
+            columnNumber: 7
+        }, this)
+    }, void 0, false, {
+        fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+        lineNumber: 566,
+        columnNumber: 5
+    }, this);
+}
+_c6 = DocsView;
+function StatsView({ onNavigate }) {
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("main", {
+        className: "relative mx-auto w-[min(88rem,calc(100%-2rem))] pb-12 pt-10",
+        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
+            className: "rounded-2xl border border-white/10 bg-white/[0.04] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] lg:p-8",
+            children: [
+                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                    className: "flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between",
+                    children: [
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                            children: [
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                    className: "mb-4 text-sm font-black uppercase tracking-[0.25em] text-violet-300",
+                                    children: "Stats"
+                                }, void 0, false, {
+                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                    lineNumber: 627,
+                                    columnNumber: 13
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
+                                    className: "text-4xl font-black text-white sm:text-6xl",
+                                    children: "Protocol activity snapshot."
+                                }, void 0, false, {
+                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                    lineNumber: 630,
+                                    columnNumber: 13
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                    className: "mt-5 max-w-3xl text-lg leading-8 text-slate-300",
+                                    children: "Track the main surfaces of the app: escrow swaps, NFT listings, wallet activity, and marketplace volume."
+                                }, void 0, false, {
+                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                    lineNumber: 633,
+                                    columnNumber: 13
+                                }, this)
+                            ]
+                        }, void 0, true, {
+                            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                            lineNumber: 626,
+                            columnNumber: 11
+                        }, this),
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                            onClick: ()=>onNavigate("swap"),
+                            className: "inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-600 px-6 text-sm font-black text-white",
+                            children: [
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$zap$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Zap$3e$__["Zap"], {
+                                    className: "h-4 w-4"
+                                }, void 0, false, {
+                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                    lineNumber: 641,
+                                    columnNumber: 13
+                                }, this),
+                                "Open Swap"
+                            ]
+                        }, void 0, true, {
+                            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                            lineNumber: 637,
+                            columnNumber: 11
+                        }, this)
+                    ]
+                }, void 0, true, {
+                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                    lineNumber: 625,
+                    columnNumber: 9
+                }, this),
+                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                    className: "mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4",
+                    children: statCards.map((stat)=>{
+                        const Icon = stat.icon;
+                        return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                            className: "rounded-xl border border-white/10 bg-[#090b1f]/75 p-5",
+                            children: [
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                    className: "flex h-11 w-11 items-center justify-center rounded-lg bg-violet-500/20 text-violet-200",
+                                    children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(Icon, {
+                                        className: "h-5 w-5"
+                                    }, void 0, false, {
+                                        fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                        lineNumber: 653,
+                                        columnNumber: 19
+                                    }, this)
+                                }, void 0, false, {
+                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                    lineNumber: 652,
+                                    columnNumber: 17
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                    className: "mt-5 text-sm font-bold text-slate-400",
+                                    children: stat.label
+                                }, void 0, false, {
+                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                    lineNumber: 655,
+                                    columnNumber: 17
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                    className: "mt-2 text-4xl font-black text-white",
+                                    children: stat.value
+                                }, void 0, false, {
+                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                    lineNumber: 656,
+                                    columnNumber: 17
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                    className: "mt-2 text-sm text-slate-400",
+                                    children: stat.detail
+                                }, void 0, false, {
+                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                    lineNumber: 657,
+                                    columnNumber: 17
+                                }, this)
+                            ]
+                        }, stat.label, true, {
+                            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                            lineNumber: 651,
+                            columnNumber: 15
+                        }, this);
+                    })
+                }, void 0, false, {
+                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                    lineNumber: 646,
+                    columnNumber: 9
+                }, this),
+                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                    className: "mt-6 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]",
+                    children: [
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                            className: "rounded-xl border border-white/10 bg-[#090b1f]/75 p-5",
+                            children: [
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
+                                    className: "text-xl font-black text-white",
+                                    children: "Weekly Flow"
+                                }, void 0, false, {
+                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                    lineNumber: 665,
+                                    columnNumber: 13
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                    className: "mt-6 grid gap-4",
+                                    children: [
+                                        [
+                                            "Swaps",
+                                            "86%"
+                                        ],
+                                        [
+                                            "NFT Listings",
+                                            "64%"
+                                        ],
+                                        [
+                                            "Mints",
+                                            "52%"
+                                        ],
+                                        [
+                                            "Wallet Actions",
+                                            "78%"
+                                        ]
+                                    ].map(([label, value])=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                            children: [
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                                    className: "mb-2 flex items-center justify-between text-sm font-bold",
+                                                    children: [
+                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                            className: "text-slate-300",
+                                                            children: label
+                                                        }, void 0, false, {
+                                                            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                            lineNumber: 675,
+                                                            columnNumber: 21
+                                                        }, this),
+                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                            className: "text-violet-200",
+                                                            children: value
+                                                        }, void 0, false, {
+                                                            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                            lineNumber: 676,
+                                                            columnNumber: 21
+                                                        }, this)
+                                                    ]
+                                                }, void 0, true, {
+                                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                    lineNumber: 674,
+                                                    columnNumber: 19
+                                                }, this),
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                                    className: "h-3 overflow-hidden rounded-full bg-white/10",
+                                                    children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                                        className: "h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-600",
+                                                        style: {
+                                                            width: value
+                                                        }
+                                                    }, void 0, false, {
+                                                        fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                        lineNumber: 679,
+                                                        columnNumber: 21
+                                                    }, this)
+                                                }, void 0, false, {
+                                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                    lineNumber: 678,
+                                                    columnNumber: 19
+                                                }, this)
+                                            ]
+                                        }, label, true, {
+                                            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                            lineNumber: 673,
+                                            columnNumber: 17
+                                        }, this))
+                                }, void 0, false, {
+                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                    lineNumber: 666,
+                                    columnNumber: 13
+                                }, this)
+                            ]
+                        }, void 0, true, {
+                            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                            lineNumber: 664,
+                            columnNumber: 11
+                        }, this),
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                            className: "rounded-xl border border-white/10 bg-[#090b1f]/75 p-5",
+                            children: [
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
+                                    className: "text-xl font-black text-white",
+                                    children: "Network Health"
+                                }, void 0, false, {
+                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                    lineNumber: 690,
+                                    columnNumber: 13
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                    className: "mt-5 grid gap-4",
+                                    children: [
+                                        [
+                                            "Cluster",
+                                            "Solana devnet"
+                                        ],
+                                        [
+                                            "Swap Program",
+                                            "IDL connected"
+                                        ],
+                                        [
+                                            "NFT Program",
+                                            "Marketplace active"
+                                        ],
+                                        [
+                                            "Metadata",
+                                            "Pinata + Metaplex"
+                                        ]
+                                    ].map(([label, value])=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                            className: "flex items-center justify-between gap-4 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3",
+                                            children: [
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                    className: "text-sm text-slate-400",
+                                                    children: label
+                                                }, void 0, false, {
+                                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                    lineNumber: 699,
+                                                    columnNumber: 19
+                                                }, this),
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                    className: "text-sm font-black text-white",
+                                                    children: value
+                                                }, void 0, false, {
+                                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                                    lineNumber: 700,
+                                                    columnNumber: 19
+                                                }, this)
+                                            ]
+                                        }, label, true, {
+                                            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                            lineNumber: 698,
+                                            columnNumber: 17
+                                        }, this))
+                                }, void 0, false, {
+                                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                                    lineNumber: 691,
+                                    columnNumber: 13
+                                }, this)
+                            ]
+                        }, void 0, true, {
+                            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                            lineNumber: 689,
+                            columnNumber: 11
+                        }, this)
+                    ]
+                }, void 0, true, {
+                    fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                    lineNumber: 663,
+                    columnNumber: 9
+                }, this)
+            ]
+        }, void 0, true, {
+            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+            lineNumber: 624,
+            columnNumber: 7
+        }, this)
+    }, void 0, false, {
+        fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+        lineNumber: 623,
+        columnNumber: 5
+    }, this);
+}
+_c7 = StatsView;
 function Main() {
     _s2();
     const [activeView, setActiveView] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])("dashboard");
@@ -8652,25 +9423,25 @@ function Main() {
                     onBack: ()=>setActiveView("dashboard")
                 }, void 0, false, {
                     fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                    lineNumber: 439,
+                    lineNumber: 717,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("main", {
                     className: "mx-auto w-[min(88rem,calc(100%-2rem))] py-8",
                     children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$app$2f$TokenSwap$2f$page$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"], {}, void 0, false, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 445,
+                        lineNumber: 723,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                    lineNumber: 444,
+                    lineNumber: 722,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-            lineNumber: 438,
+            lineNumber: 716,
             columnNumber: 7
         }, this);
     }
@@ -8684,21 +9455,57 @@ function Main() {
                     onBack: ()=>setActiveView("dashboard")
                 }, void 0, false, {
                     fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                    lineNumber: 454,
+                    lineNumber: 732,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$app$2f$nft_logic$2f$page$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"], {}, void 0, false, {
                     fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                    lineNumber: 459,
+                    lineNumber: 737,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-            lineNumber: 453,
+            lineNumber: 731,
             columnNumber: 7
         }, this);
     }
+    const renderView = ()=>{
+        if (activeView === "how") {
+            return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(HowItWorksView, {
+                onNavigate: setActiveView
+            }, void 0, false, {
+                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                lineNumber: 744,
+                columnNumber: 14
+            }, this);
+        }
+        if (activeView === "docs") {
+            return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(DocsView, {
+                onNavigate: setActiveView
+            }, void 0, false, {
+                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                lineNumber: 748,
+                columnNumber: 14
+            }, this);
+        }
+        if (activeView === "stats") {
+            return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(StatsView, {
+                onNavigate: setActiveView
+            }, void 0, false, {
+                fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+                lineNumber: 752,
+                columnNumber: 14
+            }, this);
+        }
+        return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(Dashboard, {
+            onNavigate: setActiveView
+        }, void 0, false, {
+            fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
+            lineNumber: 755,
+            columnNumber: 12
+        }, this);
+    };
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
         className: "min-h-screen overflow-hidden bg-[#020412] text-white",
         children: [
@@ -8706,14 +9513,14 @@ function Main() {
                 className: "pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_78%_14%,rgba(88,28,135,0.42),transparent_34%),radial-gradient(circle_at_30%_78%,rgba(37,99,235,0.18),transparent_28%),linear-gradient(180deg,#020412_0%,#050619_44%,#020412_100%)]"
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 466,
+                lineNumber: 760,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "pointer-events-none fixed inset-0 opacity-45 [background-image:linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] [background-size:72px_72px]"
             }, void 0, false, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 467,
+                lineNumber: 761,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8721,41 +9528,39 @@ function Main() {
                 children: [
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(ShellHeader, {
                         activeView: activeView,
-                        onNavigate: setActiveView
+                        onNavigate: setActiveView,
+                        onBack: ()=>setActiveView("dashboard")
                     }, void 0, false, {
                         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 469,
+                        lineNumber: 763,
                         columnNumber: 9
                     }, this),
-                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$app$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(Dashboard, {
-                        onNavigate: setActiveView
-                    }, void 0, false, {
-                        fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                        lineNumber: 470,
-                        columnNumber: 9
-                    }, this)
+                    renderView()
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-                lineNumber: 468,
+                lineNumber: 762,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/frontend/app/LandingPage/page.tsx",
-        lineNumber: 465,
+        lineNumber: 759,
         columnNumber: 5
     }, this);
 }
 _s2(Main, "XwNR4FjxKHPH8zHpNRRjAqfD2l4=");
-_c5 = Main;
-var _c, _c1, _c2, _c3, _c4, _c5;
+_c8 = Main;
+var _c, _c1, _c2, _c3, _c4, _c5, _c6, _c7, _c8;
 __turbopack_context__.k.register(_c, "WalletButton");
 __turbopack_context__.k.register(_c1, "BrandMark");
 __turbopack_context__.k.register(_c2, "ShellHeader");
 __turbopack_context__.k.register(_c3, "HeroArtwork");
 __turbopack_context__.k.register(_c4, "Dashboard");
-__turbopack_context__.k.register(_c5, "Main");
+__turbopack_context__.k.register(_c5, "HowItWorksView");
+__turbopack_context__.k.register(_c6, "DocsView");
+__turbopack_context__.k.register(_c7, "StatsView");
+__turbopack_context__.k.register(_c8, "Main");
 if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
     __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
 }

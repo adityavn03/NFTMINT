@@ -209,6 +209,21 @@ const getEscrowPda = (
     programId
   )[0];
 
+const formatActionError = (message: string) => {
+  if (message.includes("AccountDidNotDeserialize")) {
+    return "This escrow account is stale or from an older program version. Refresh escrows and select a newly created escrow.";
+  }
+
+  if (
+    message.includes("SameMint") ||
+    message.includes("Maker and taker mints cannot be the same")
+  ) {
+    return "Choose a different taker token. The maker token and taker offer token cannot be the same mint.";
+  }
+
+  return message;
+};
+
 export default function EscrowUI() {
   const { connection } = useConnection();
   const wallet = useWallet();
@@ -272,11 +287,15 @@ export default function EscrowUI() {
     (escrow) =>
       escrow.account.depositMaker &&
       !escrow.account.depositTaker &&
+      escrow.account.taker.toBase58() === ZERO_PUBKEY &&
       !escrow.account.maker.equals(wallet.publicKey ?? PublicKey.default)
   );
   const activeEscrowCount = escrows.filter(
     (escrow) => !escrow.account.depositMaker || !escrow.account.depositTaker
   ).length;
+  const selectedOfferUsesSameMint =
+    Boolean(selectedEscrow && takerToken.mintAddress) &&
+    selectedEscrow?.account.mintMaker.toBase58() === takerToken.mintAddress;
 
   const fetchEscrows = async () => {
     try {
@@ -446,11 +465,7 @@ export default function EscrowUI() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Transaction failed";
       console.error(err);
-      setError(
-        message.includes("AccountDidNotDeserialize")
-          ? "This escrow account is stale or from an older program version. Refresh escrows and select a newly created escrow."
-          : message
-      );
+      setError(formatActionError(message));
     } finally {
       setLoading(false);
       setStatus("");
@@ -658,6 +673,12 @@ export default function EscrowUI() {
       }
 
       const takerMint = new PublicKey(takerToken.mintAddress);
+      if (escrowData.mintMaker.equals(takerMint)) {
+        throw new Error(
+          "Choose a different taker token. The maker token and taker offer token cannot be the same mint."
+        );
+      }
+
       const payAta = takerToken.tokenAccountAddress
         ? new PublicKey(takerToken.tokenAccountAddress)
         : await getAssociatedTokenAddress(takerMint, wallet.publicKey);
@@ -1363,6 +1384,11 @@ export default function EscrowUI() {
                       <p className="mt-2 text-xs leading-5 text-slate-300">
                         The maker will review your token mint and amount before executing.
                       </p>
+                      {selectedOfferUsesSameMint && (
+                        <p className="mt-3 rounded-lg border border-amber-300/30 bg-amber-400/10 p-3 text-xs font-bold leading-5 text-amber-100">
+                          Select a different taker token. This escrow already locks the same mint from the maker side.
+                        </p>
+                      )}
                       <label className="mt-4 grid gap-2 text-sm font-bold text-slate-200">
                         Taker Offer Amount
                         <input
@@ -1378,7 +1404,8 @@ export default function EscrowUI() {
                         disabled={
                           loading ||
                           selectedEscrow.account.depositTaker ||
-                          !takerToken.mintAddress
+                          !takerToken.mintAddress ||
+                          selectedOfferUsesSameMint
                         }
                         className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-600 px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-45"
                       >
