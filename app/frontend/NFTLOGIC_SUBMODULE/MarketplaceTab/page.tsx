@@ -333,6 +333,10 @@ function useMarketplaceAnalytics(refreshKey = 0) {
   return { analytics, loadingAnalytics };
 }
 
+function formatSaleCount(count: number) {
+  return `${count} ${count === 1 ? "sale" : "sales"}`;
+}
+
 function formatSol(value: number) {
   return `${value.toLocaleString(undefined, {
     maximumFractionDigits: 2,
@@ -1213,7 +1217,7 @@ export function MarketplaceSidePanel({
                   {seller.verified && <BadgeCheck className="ml-1 inline h-3.5 w-3.5 text-sky-400" />}
                 </p>
                 <p className="text-xs text-slate-400">
-                  {formatSol(seller.totalVolume)} - {seller.salesCount} sales
+                  {formatSol(seller.totalVolume)} - {formatSaleCount(seller.salesCount)}
                 </p>
               </div>
             </div>

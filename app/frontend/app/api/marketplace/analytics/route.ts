@@ -104,6 +104,16 @@ type CollectionMetric = ReturnType<typeof getCollectionFromSale> & {
   rarityActivity: number;
 };
 
+type SellerMetric = {
+  sellerAddress: string;
+  displayName: string;
+  avatarUrl: string;
+  verified: boolean;
+  totalVolume: number;
+  salesCount: number;
+  lastSaleAt: Date | null;
+};
+
 function getMetricKey(collection: { id?: string }) {
   return collection.id || "";
 }
@@ -178,7 +188,6 @@ export async function GET() {
       recentSales,
       collectionSales,
       completedMints,
-      sellerGroups,
     ] =
       await Promise.all([
         prisma.nftCollection.findMany({
@@ -207,13 +216,6 @@ export async function GET() {
           include: { drop: { include: { collection: true } } },
           orderBy: { mintedAt: "desc" },
           take: 80,
-        }),
-        prisma.marketplaceSale.groupBy({
-          by: ["sellerAddress"],
-          _sum: { price: true },
-          _count: { id: true },
-          orderBy: { _sum: { price: "desc" } },
-          take: 10,
         }),
       ]);
 
@@ -327,26 +329,8 @@ export async function GET() {
       },
     ].filter((section) => section.collections.length > 0);
 
-    const topSellers = sellerGroups.map((group, index) => {
-      const row = group as DbRecord;
-      const sellerAddress = toStringValue(row.sellerAddress);
-      const sum = row._sum as DbRecord | undefined;
-      const count = row._count as DbRecord | undefined;
-
-      return {
-        rank: index + 1,
-        sellerAddress,
-        displayName:
-          `${sellerAddress.slice(0, 4)}...${sellerAddress.slice(-4)}`,
-        avatarUrl: "",
-        verified: false,
-        totalVolume: toNumber(sum?.price),
-        salesCount: Number(count?.id ?? 0),
-      };
-    });
-
-    const sellerAddresses = sellerGroups
-      .map((group) => toStringValue((group as DbRecord).sellerAddress))
+    const sellerAddresses = collectionSales
+      .map((sale) => toStringValue((sale as DbRecord).sellerAddress))
       .filter(Boolean);
 
     const sellerProfiles = await prisma.sellerProfile.findMany({
@@ -360,18 +344,58 @@ export async function GET() {
       })
     );
 
-    const enrichedTopSellers = topSellers.map((seller) => {
-      const profile = profileByAddress.get(seller.sellerAddress);
+    const sellerMetrics = new Map<string, SellerMetric>();
 
-      return {
-        ...seller,
-        displayName:
-          toStringValue(profile?.displayName) ||
-          `${seller.sellerAddress.slice(0, 4)}...${seller.sellerAddress.slice(-4)}`,
-        avatarUrl: toStringValue(profile?.avatarUrl),
-        verified: Boolean(profile?.verified),
-      };
+    collectionSales.forEach((sale) => {
+      const row = sale as DbRecord;
+      const sellerAddress = toStringValue(row.sellerAddress);
+      if (!sellerAddress) return;
+
+      const profile = profileByAddress.get(sellerAddress);
+      const current =
+        sellerMetrics.get(sellerAddress) ||
+        ({
+          sellerAddress,
+          displayName:
+            toStringValue(profile?.displayName) ||
+            `${sellerAddress.slice(0, 4)}...${sellerAddress.slice(-4)}`,
+          avatarUrl: toStringValue(profile?.avatarUrl),
+          verified: Boolean(profile?.verified),
+          totalVolume: 0,
+          salesCount: 0,
+          lastSaleAt: null,
+        } satisfies SellerMetric);
+      const soldAt = row.soldAt instanceof Date ? row.soldAt : null;
+
+      current.totalVolume += toNumber(row.price);
+      current.salesCount += 1;
+      current.lastSaleAt =
+        current.lastSaleAt && soldAt && current.lastSaleAt > soldAt
+          ? current.lastSaleAt
+          : soldAt || current.lastSaleAt;
+      sellerMetrics.set(sellerAddress, current);
     });
+
+    const enrichedTopSellers = Array.from(sellerMetrics.values())
+      .sort((a, b) => {
+        const latestA = a.lastSaleAt?.getTime() ?? 0;
+        const latestB = b.lastSaleAt?.getTime() ?? 0;
+        return (
+          b.totalVolume - a.totalVolume ||
+          b.salesCount - a.salesCount ||
+          latestB - latestA
+        );
+      })
+      .slice(0, 10)
+      .map((seller, index) => ({
+        sellerAddress: seller.sellerAddress,
+        displayName: seller.displayName,
+        avatarUrl: seller.avatarUrl,
+        verified: seller.verified,
+        totalVolume: seller.totalVolume,
+        salesCount: seller.salesCount,
+        rank: index + 1,
+      }));
 
     return NextResponse.json({
       featuredCollections: featuredCollections.map((collection) =>
